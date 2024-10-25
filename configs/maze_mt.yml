@@ -1,0 +1,134 @@
+# for multi-task learning
+
+# env param
+env_name: "ContinuousMaze-v0"
+
+# algo param
+## alpha
+learn_alpha: True  # whether to train alpha
+alpha: 0.2
+alpha_lr: !!float 5e-5
+## actor
+# 大于 5e-5会让结果不稳定
+actor_hidden_size: [256, 256, 16]
+actor_lr: !!float 5e-5
+## critic
+critic_hidden_size: [256, 256, 256, 256, 16]
+critic_lr: !!float 5e-5
+## training
+gamma: 0.99
+rho: .005
+buffer_size: 1000_00
+start_timesteps: 0 # randomly select action to warmup buffer.
+start_epi: 0 # randomly select action to warmup buffer.
+max_timesteps: 20_000_000
+eval_freq: 20
+recent_buf_len: 5
+eval_unseen_freq: 1000
+update_freq: 3
+task_repeated: 1 # 增加repeated 没啥好处
+updates_per_step: 1
+batch_size: 256
+random_start_rate: 1.0 # random start 可以让学习效率变快，否则长轨迹不容易学好。
+noise_scaler: 0.1
+is_sequence_data: False
+hist_len: 3
+multi_map: True
+iid_data_num: 1000
+max_drift_scale: 0.0
+is_map_visible: False
+# others
+seed: 0
+increment_check_pred: 10_000
+
+# pretrain param
+mu: 0.0
+sigma: 0.1
+num_epoches: 1
+fake_samples: 2560
+pretrain_freq: 3
+num_round: 50000
+
+# multi-task
+task_nums: 10
+## actor
+actor_embed_dim: 128
+actor_dropout: 0.1
+actor_pos_encode: False
+actor_num_encoder_layers: 3
+actor_num_decoder_layers: 6
+actor_dim_feedforward: 256
+
+actor_kernel_size: 2
+actor_levels: 5
+actor_n_hidden: 8
+actor_num_heads: 64
+## critic
+critic_embed_dim: 128
+critic_dropout: 0.1
+critic_pos_encode: False
+critic_num_encoder_layers: 4 
+critic_num_decoder_layers: 4
+critic_dim_feedforward: 256
+critic_goal_embed_dim: 16
+critic_embed_goal: True
+
+critic_kernel_size: 2
+critic_levels: 5
+critic_n_hidden: 8
+critic_num_heads: 16
+map_type: 'id'
+
+# reward scale
+scale: 10
+action_weight: 0.9
+with_distance_reward: True
+distance_weight: 20
+max_space_dist: 2.0
+reward_fun_type: 'origin'
+hit_wall_reward: -4. # 需要小于单步的ilrreward 的最小值
+reach_goal_reward: 15. # 需要明显大于 base / (1- gamma)
+no_coordinate: False
+
+# net
+weight_decay: !!float 1e-6
+share_state_encoder: True  # traj share encoder with the state
+
+# imitation
+batch_with_demo: True  # concate the sampled batch with the demo batch
+add_bc_reward: True  # add ilr reward
+do_scale: True  # scale the rewards
+bc_train: False  # train bc and sac iteratively
+dynamical_demo: True  # dynamically
+
+# adversarial
+train_traj_ratio: 0.9
+
+#time used tracker
+time_tracker_log_freq: 20000
+
+obstacle_prob: 0.0
+
+local_view_num: -1
+local_view_depth: 1.5
+
+action_disturbance: 0.0
+
+use_transformer: False
+use_rnn_actor: False
+use_rnn_critic: False
+use_only_decoder: False
+task_random_sample_prob: 0.1
+
+add_local_view_error: False
+local_view_error_weight: 0.5
+
+# sync 
+sync_margin: 50000
+sync_logs: False
+
+anneal_entropy: False
+
+no_itor: False
+
+no_coordinate: False
