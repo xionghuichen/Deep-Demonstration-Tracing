@@ -1,7 +1,7 @@
 # for multi-task learning
 
 # env param
-env_name: "ContinuousMaze-v0"
+env_name: "ValetParkingAssistMaze-v0"
 
 # algo param
 ## alpha
@@ -51,6 +51,8 @@ num_round: 50000
 
 # multi-task
 task_nums: 10
+task_num_per_map: 10
+train_ratio: 0.9
 ## actor
 actor_embed_dim: 128
 actor_dropout: 0.1
@@ -58,6 +60,7 @@ actor_pos_encode: False
 actor_num_encoder_layers: 3
 actor_num_decoder_layers: 6
 actor_dim_feedforward: 256
+
 
 actor_kernel_size: 2
 actor_levels: 5
@@ -96,8 +99,6 @@ share_state_encoder: True  # traj share encoder with the state
 
 # imitation
 batch_with_demo: True  # concate the sampled batch with the demo batch
-add_bc_reward: True  # add ilr reward
-do_scale: True  # scale the rewards
 bc_train: False  # train bc and sac iteratively
 dynamical_demo: True  # dynamically
 

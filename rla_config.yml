@@ -9,10 +9,11 @@ PROJECT_TYPE:
 # When the following path is set to relative path, the current working directory is the path which rla_config.yaml in.
 BACKUP_CONFIG:
   backup_code_dir:
-    - 'sac_maze'
-    - 'rl'
-    - 'config'
-    - 'envs'
+    - './'
+  ignore_code_paths:
+    - '.gitignore'
+    - '.backupcode_ignore'
+
   lib_dir: './build/lib/'
 # option: 'stdout', 'log', 'tensorboard', 'csv'
 LOG_USED:
