@@ -33,10 +33,10 @@ step3: 在Maze环境中运行SAC
 
 ```bash
 # 默认实验结果会保存到out_mt文件夹下, --description用于标记当前实验结果
-python -m sac_maze.sac_maze_mt --device cuda:0 --description "sac maze"
+python main_ddt.py --device cuda:0 --description "sac maze"
 
 # 默认实验结果会保存到out_test文件夹下，可用于debug
-python -m sac_maze.sac_maze_mt --device cuda:0 --description "sac maze" --test
+python main_ddt.py --device cuda:0 --description "sac maze" --test
 ```
 
 **备注**：模型在开始运行前会加载configs/maze_mt.yml中的相关配置，关于相关参数的含义请看对应注释或通过该参数的名字即可得知
