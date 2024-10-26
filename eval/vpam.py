@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import random
 
 from collections import deque
+
 # from multi_task_env_handler import VPAMMultiTaskEnvHandler
 
 # from algo.sac_mlp import SACAgent
@@ -93,12 +94,12 @@ from collections import deque
 #     print(f"Result saved at {img_path}")
 
 
-def eval_policy(
-    policy, configs, env_handler, eval_episodes=3, traj=None, walls=None
-):
+def eval_policy(policy, configs, env_handler, eval_episodes=3, traj=None, walls=None):
     # todo: add hist
     hist_len = 3
-    eval_env = env_handler.env_creator(raw_rew_func=True)  # gym.make(configs["env_name"])
+    eval_env = env_handler.env_creator(
+        raw_rew_func=True
+    )  # gym.make(configs["env_name"])
 
     if walls is not None:
         eval_env.custom_walls(walls)
@@ -109,9 +110,7 @@ def eval_policy(
             np.array(configs["goal"], dtype=np.int64),
         )
     else:
-        start, goal = env_handler.get_start_and_goal_from_demo(
-            traj, in_eval=True
-        )
+        start, goal = env_handler.get_start_and_goal_from_demo(traj, in_eval=True)
 
     policy.actor.eval()  # for dropout
 
@@ -207,8 +206,10 @@ def test_unseen(
     total_short_exp_logs = {"task_ids": [], "return": [], "obstacle_num": []}
     eval_unseen_task_ids = test_task_ids
     for task_id in eval_unseen_task_ids:
-        env = env_handler.env_creator(raw_rew_func=True)  # gym.make(configs["env_name"])
-        env.custom_walls(all_maps[map_id_lst[task_id]])
+        env = env_handler.env_creator(
+            raw_rew_func=True
+        )  # gym.make(configs["env_name"])
+        env.custom_walls(map_id_lst[task_id]["map"])
         # env.walls=all_maps[map_id_lst[task_id]]
 
         new_traj = all_trajs[task_id]
@@ -218,7 +219,7 @@ def test_unseen(
             logger,
             3,
             traj=new_traj.copy(),
-            walls=all_maps[map_id_lst[task_id]],
+            walls=map_id_lst[task_id]["map"],
             env_creator=env_handler.env_creator,
         )
 
@@ -231,10 +232,8 @@ def test_unseen(
         ret_dict[task_id] = cur_return
 
         # save result
-        start, goal = env_handler.get_start_and_goal_from_demo(
-            new_traj, in_eval=True
-        )
-        env.custom_walls(all_maps[map_id_lst[task_id]])
+        start, goal = env_handler.get_start_and_goal_from_demo(new_traj, in_eval=True)
+        env.custom_walls(map_id_lst[task_id]["map"])
         obstacle_num = env.add_extra_static_obstacles(exp_traj=new_traj, start=start)
         state, done = (
             env.reset(

@@ -5,7 +5,6 @@ import gym
 import time
 import random
 from collections import deque
-import matplotlib.pyplot as plt
 
 from fvcore.nn import parameter_count_table
 import copy
@@ -47,39 +46,6 @@ def noisy_observation(env, state, configs):
     return state
 
 
-def reach_goal(env_name, state):
-    if env_name == "ValetParkingAssistMaze-v0":
-        if np.linalg.norm(state[-2:] - env.GOAL_POINT) <= 0.5:
-            succeed = True
-        else:
-            succeed = False
-    else:
-        raise NotImplementedError
-    return succeed
-
-
-def visualize_trajs(env_name, traj, img_dir, task_id, run_num, task_config, succeed):
-    if env_name == "ValetParkingAssistMaze-v0":
-        rollout_maze = env.render(mode="rgb_array", exp_traj=traj)
-        img_path = os.path.join(
-            img_dir,
-            "_".join(
-                [
-                    str(task_id),
-                    "lastest-run-",
-                    str(run_num % 5),
-                    "map-",
-                    str(task_config["map_id"]),
-                ]
-            )
-            + ("_succeed" if succeed else "_fail")
-            + ".png",
-        )  # too many data thus excluding
-        plt.imsave(img_path, rollout_maze)
-    else:
-        raise NotImplementedError
-
-
 ############################################## env specific functions ##############################################
 
 from task_sampler import TaskSampler
@@ -100,7 +66,6 @@ def train(configs, env, env_handler):
     trainer.init_policy(policy, data_collect_env)
 
     time.sleep(3.0)
-    tmp_data_dir = exp_manager.tmp_data_dir
     buffer_dir = trainer.buffer_dir
     os.makedirs(buffer_dir, exist_ok=True)
     demo_dir = trainer.demo_dir
@@ -110,7 +75,7 @@ def train(configs, env, env_handler):
     del dump_configs["map_fig_dict"]
     write_config(dump_configs, os.path.join(exp_manager.results_dir, "configs.yml"))
 
-    # TODO: 以下变量临时赋值，二次重构时要放到trainner 内部
+    # TODO: 以下变量临时赋值，二次重构时要放到trainner内部
     iid_train_task_ids = trainer.iid_train_task_ids
     all_trajs = trainer.all_trajs
     task_id_to_task_config_list = trainer.task_id_to_task_config_list
@@ -232,7 +197,7 @@ def train(configs, env, env_handler):
                 obs = noisy_observation(env, state, configs)
                 runned_episodes[task_id] += 1
                 policy.trans_buffer.stored_eps_num = runned_episodes[task_id]
-                succeed = reach_goal(configs["env_name"], state)
+                succeed = env_handler.reach_goal(goal, state)
                 failure_episodes[task_id].append(0 if succeed else 1)
                 saved_maze_num[task_id] = (saved_maze_num[task_id] + 1) % 5
                 task_sampler.update_failure_rate(
@@ -240,8 +205,8 @@ def train(configs, env, env_handler):
                 )
 
                 if runned_episodes[task_id] % 50 < 5:
-                    visualize_trajs(
-                        configs["env_name"],
+                    trainer.visualize_trajs(
+                        env,
                         traj,
                         img_dir,
                         task_id,
@@ -296,7 +261,7 @@ if __name__ == "__main__":
         out_dir = osp.join(CURRENT_FILE_DIRNAME, EXP_LOG_NAME, "exp")
     os.makedirs(out_dir, exist_ok=True)
     rla_data_root = out_dir
-    exp_folder_name = configs["env_name"]
+    exp_folder_name = configs["env_name"] + "-test-v0"
     exp_manager.configure(
         exp_folder_name,
         private_config_path=osp.join(CURRENT_FILE_DIRNAME, "rla_config.yml"),

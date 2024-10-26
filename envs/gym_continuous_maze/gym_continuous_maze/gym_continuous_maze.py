@@ -575,14 +575,17 @@ class ContinuousMaze(gym.Env):
 
         self.surf = pygame.transform.flip(self.surf, flip_x=False, flip_y=True)
         self.screen.blit(self.surf, (0, 0))
+        res = None
         if mode == "human":
             pygame.display.flip()
         elif mode == "rgb_array":
-            return np.transpose(
+            res = np.transpose(
                 np.array(pygame.surfarray.pixels3d(self.screen)), axes=(1, 0, 2)
             )
         else:
-            return self.isopen
+            res = self.isopen
+        self.close()
+        return res
 
     def close(self):
         if self.screen is not None:

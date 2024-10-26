@@ -4,6 +4,8 @@ import gym
 from RLA import logger, time_tracker, exp_manager
 import numpy as np
 import random
+import matplotlib.pyplot as plt
+
 
 from fvcore.nn import parameter_count_table
 from utils import set_seed, parameter_count_filter
@@ -86,35 +88,6 @@ class VPAMTrainer(BasicTrainer):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
-    # def env_creator(self, raw_rew_func=False):
-    #     """
-    #     We rescale the reward values for more stable RL training, but it is implmented in the environment class.
-    #     This is a unnecessary and redundant implementation. We keep it here for compatibility with the original code.
-    #     """
-    #     if raw_rew_func:
-    #         env = gym.make(
-    #             self.env_name,
-    #             hit_wall_reward=-20,
-    #             reach_goal_reward=100,
-    #             obstacle_prob=self.configs["obstacle_prob"],
-    #             local_view_num=self.configs["local_view_num"],
-    #             local_view_depth=self.configs["local_view_depth"],
-    #             action_disturbance=self.configs["action_disturbance"],
-    #         )
-    #     else:
-    #         env = gym.make(
-    #             self.env_name,
-    #             hit_wall_reward=self.configs["hit_wall_reward"],
-    #             reach_goal_reward=self.configs["reach_goal_reward"],
-    #             obstacle_prob=self.configs["obstacle_prob"],
-    #             local_view_num=self.configs["local_view_num"],
-    #             local_view_depth=self.configs["local_view_depth"],
-    #             action_disturbance=self.configs["action_disturbance"],
-    #         )
-    #     env.reset(with_local_view=True)
-    #     env.action_space.seed(self.configs["seed"])
-    #     return env
-
     def collect_demonstrations(self, configs):
         super().collect_demonstrations(configs)
         env_for_refresh = self.env_handler.env_creator()
@@ -182,6 +155,25 @@ class VPAMTrainer(BasicTrainer):
         logger.info(f"gen traj buffer {len(gen_traj_buffer)}", gen_traj_buffer)
         logger.info(f"reuse traj buffer {len(skip_traj_buffer)}", skip_traj_buffer)
 
+
+    def visualize_trajs(self, env, traj, img_dir, task_id, run_num, task_config, succeed):
+        rollout_maze = env.render(mode="rgb_array", exp_traj=traj)
+        img_path = os.path.join(
+            img_dir,
+            "_".join(
+                [
+                    str(task_id),
+                    "lastest-run-",
+                    str(run_num % 5),
+                    "map-",
+                    str(task_config["map_id"]),
+                ]
+            )
+            + ("_succeed" if succeed else "_fail")
+            + ".png",
+        )  # too many data thus excluding
+        plt.imsave(img_path, rollout_maze)
+                
     def evaluation(self, task_id, runned_episodes, task_config):
         """
         TODO: 这里eval 和 test的逻辑过于复杂，后面需要进行重构

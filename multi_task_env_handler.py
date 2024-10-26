@@ -8,9 +8,15 @@ class BasicMultiTaskEnvHandler:
         self.dummy_env = self.create_env(configs)
 
     def create_env(self, *args, **kwargs):
+        """
+        Create the environment.
+        """
         pass
 
     def get_start_and_goal_from_demo(self, *args, **kwargs):
+        """
+        get start and end of a traj
+        """
         pass
 
     def config_env_through_demo(self, demo_traj, env):
@@ -22,10 +28,18 @@ class BasicMultiTaskEnvHandler:
     def get_osil_reward(
         self, demo_traj, state, action, done, task_reward, *args, **kwargs
     ):
+        """
+        Get the reward for the OSIL algorithm.
+        """
         return self.reward_func(
             demo_traj, state, action, done, task_reward, *args, **kwargs
         )
 
+    def reach_goal(self, goal, state):
+        """
+        Check if the agent has reached the goal.
+        """
+        pass
 
 class VPAMMultiTaskEnvHandler(BasicMultiTaskEnvHandler):
     def __init__(self, configs) -> None:
@@ -84,6 +98,13 @@ class VPAMMultiTaskEnvHandler(BasicMultiTaskEnvHandler):
         env.reset(with_local_view=True)
         env.action_space.seed(self.configs["seed"])
         return env
+
+    def reach_goal(self, goal, state):
+        if np.linalg.norm(state[-2:] - goal) <= 0.5:
+            succeed = True
+        else:
+            succeed = False
+        return succeed
 
     def get_start_and_goal_from_demo(
         self,
