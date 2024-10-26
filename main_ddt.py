@@ -163,7 +163,9 @@ def train(configs, env, env_handler):
         demo_traj = traj
         task_config = task_id_to_task_config_list[task_id]
 
-        logger.info(f"Training on training task {task_id} (config {task_config})")
+        logger.info(
+            f"Training on training task {task_id} (scene config {task_config['map_id']})"
+        )
         state, goal, done = env_handler.config_env_through_demo(
             demo_traj, env, task_config
         )

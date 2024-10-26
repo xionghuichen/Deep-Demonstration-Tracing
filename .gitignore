@@ -162,4 +162,4 @@ cython_debug/
 #.idea/
 
 RLA_LOG
-git-filter-repo
+data/*
