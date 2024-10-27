@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import random
 
 from collections import deque
+from utils import update_hist
 
 # from multi_task_env_handler import VPAMMultiTaskEnvHandler
 
@@ -110,7 +111,7 @@ def eval_policy(policy, configs, env_handler, eval_episodes=3, traj=None, walls=
             np.array(configs["goal"], dtype=np.int64),
         )
     else:
-        start, goal = env_handler.get_start_and_goal_from_demo(traj, in_eval=True)
+        start, goal = env_handler.get_start_and_goal_from_demo(traj)
 
     policy.actor.eval()  # for dropout
 
@@ -126,7 +127,7 @@ def eval_policy(policy, configs, env_handler, eval_episodes=3, traj=None, walls=
                 seed=configs["seed"],
                 start=start,
                 goal=goal,
-                with_local_view=configs["with_local_view"],
+                with_local_view=True,
             ),
             False,
         )
@@ -174,14 +175,14 @@ def eval_policy(policy, configs, env_handler, eval_episodes=3, traj=None, walls=
     return avg_return, short_exp_log
 
 
-def eval_random_all(all_trajs, policy, configs, logger, unseen_num=10):
-    """Evaluate policy on random samples of all goals"""
-    avg_return = 0.0
-    for _ in range(unseen_num):
-        new_traj = random.choice(all_trajs)
-        avg_return += eval_policy(policy, configs, logger, 5, traj=new_traj.copy())
-    avg_return /= unseen_num
-    return avg_return
+# def eval_random_all(all_trajs, policy, configs, logger, unseen_num=10):
+#     """Evaluate policy on random samples of all goals"""
+#     avg_return = 0.0
+#     for _ in range(unseen_num):
+#         new_traj = random.choice(all_trajs)
+#         avg_return += eval_policy(policy, configs, logger, 5, traj=new_traj.copy())
+#     avg_return /= unseen_num
+#     return avg_return
 
 
 def test_unseen(
@@ -216,11 +217,10 @@ def test_unseen(
         cur_return, short_exp_log = eval_policy(
             policy,
             configs,
-            logger,
+            env_handler,
             3,
             traj=new_traj.copy(),
             walls=map_id_lst[task_id]["map"],
-            env_creator=env_handler.env_creator,
         )
 
         # add details
@@ -232,7 +232,7 @@ def test_unseen(
         ret_dict[task_id] = cur_return
 
         # save result
-        start, goal = env_handler.get_start_and_goal_from_demo(new_traj, in_eval=True)
+        start, goal = env_handler.get_start_and_goal_from_demo(new_traj)
         env.custom_walls(map_id_lst[task_id]["map"])
         obstacle_num = env.add_extra_static_obstacles(exp_traj=new_traj, start=start)
         state, done = (
@@ -240,7 +240,7 @@ def test_unseen(
                 seed=100,
                 start=start,
                 goal=goal,
-                with_local_view=configs["with_local_view"],
+                with_local_view=True,
             ),
             False,
         )

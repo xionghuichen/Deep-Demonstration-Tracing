@@ -60,6 +60,7 @@ actor_pos_encode: False
 actor_num_encoder_layers: 3
 actor_num_decoder_layers: 6
 actor_dim_feedforward: 256
+only_replay: False
 
 
 actor_kernel_size: 2

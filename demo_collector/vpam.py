@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import gym
-
+import tqdm
 import cv2
 
 
@@ -51,7 +51,7 @@ def _refresh_maze_local_view(data_pkg, raw_rew_env):
 
     new_all_trajs = []
 
-    for i, exp_traj in enumerate(all_trajs):
+    for i, exp_traj in tqdm.tqdm(enumerate(all_trajs), total=len(all_trajs)):
         cur_wall = all_maps[map_id_lst[i]]
 
         start, goal = get_start_goal(exp_traj)

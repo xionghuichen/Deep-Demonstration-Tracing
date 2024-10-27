@@ -56,7 +56,6 @@ class MT_AttnSACAgent(SACAgent):
             self.env_name,
             self.device,
             self.action_weight,
-            self.with_local_view,
             self.scale,
             self.add_bc_reward,
             self.do_scale,
@@ -292,19 +291,6 @@ class MT_AttnSACAgent(SACAgent):
 
         return self.info
 
-    # def preprocess_data(self, env_name, task_ids, with_local_view):
-    #     """
-    #     Preprocess demos into buffer
-    #     """
-    #     for task_id in task_ids:
-    #         demo_path = os.path.join(
-    #             "sac_maze", "demo", "demo_" + str(task_id) + ".csv"
-    #         )
-    #         demo_traj = get_demo(env_name, demo_path, with_local_view)
-    #         # demo_traj = demo_traj.reshape(
-    #         #     demo_traj.shape[0], -1
-    #         # )  # [traj_len, state_dim + action_dim]
-    #         self.traj_buffer.insert(task_id, demo_traj)
 
     def load_traj(self, task_ids, demo_trajs, buffer_dir, reuse_existing_buf):
         # not support multi map

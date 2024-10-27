@@ -87,6 +87,8 @@ class BasicTrainer:
 class VPAMTrainer(BasicTrainer):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.best_ood_test_return = -np.inf
+        self.best_iid_test_return = -np.inf
 
     def collect_demonstrations(self, configs):
         super().collect_demonstrations(configs)
@@ -155,8 +157,9 @@ class VPAMTrainer(BasicTrainer):
         logger.info(f"gen traj buffer {len(gen_traj_buffer)}", gen_traj_buffer)
         logger.info(f"reuse traj buffer {len(skip_traj_buffer)}", skip_traj_buffer)
 
-
-    def visualize_trajs(self, env, traj, img_dir, task_id, run_num, task_config, succeed):
+    def visualize_trajs(
+        self, env, traj, img_dir, task_id, run_num, task_config, succeed
+    ):
         rollout_maze = env.render(mode="rgb_array", exp_traj=traj)
         img_path = os.path.join(
             img_dir,
@@ -173,7 +176,7 @@ class VPAMTrainer(BasicTrainer):
             + ".png",
         )  # too many data thus excluding
         plt.imsave(img_path, rollout_maze)
-                
+
     def evaluation(self, task_id, runned_episodes, task_config):
         """
         TODO: 这里eval 和 test的逻辑过于复杂，后面需要进行重构
@@ -233,9 +236,12 @@ class VPAMTrainer(BasicTrainer):
                 )
             logger.record_tabular("eval_unseen_return", unseen_result)
 
-            temp_map_ids = self.task_id_to_task_config_list[unseen_exp_log["task_ids"]][
-                "map_id"
+            temp_map_info = np.array(self.task_id_to_task_config_list)[
+                unseen_exp_log["task_ids"]
             ]
+            temp_map_ids = []
+            for map_info in temp_map_info:
+                temp_map_ids.append(map_info["map_id"])
             for mid in set(temp_map_ids):
                 logger.record_tabular(
                     f"eval_unseen_return/map_{mid}",
@@ -276,9 +282,13 @@ class VPAMTrainer(BasicTrainer):
                     "eval_unseen_return_new_map", new_map_unseen_result
                 )
 
-                temp_map_ids = self.task_id_to_task_config_list[
+                temp_map_info = np.array(self.task_id_to_task_config_list)[
                     unseen_exp_log["task_ids"]
-                ]["map_id"]
+                ]
+                temp_map_ids = []
+                for map_info in temp_map_info:
+                    temp_map_ids.append(map_info["map_id"])
+
                 for mid in set(temp_map_ids):
                     logger.record_tabular(
                         f"eval_unseen_return_new_map/new_map_{mid}",
@@ -301,18 +311,18 @@ class VPAMTrainer(BasicTrainer):
                         np.mean(without_obstacle_returns),
                     )
 
-                if new_map_unseen_result > best_ood_test_return:
+                if new_map_unseen_result > self.best_ood_test_return:
                     self.policy.save_model(
                         os.path.join(
                             self.result_dir, self.model_name + "_best_ood_test.pth"
                         )
                     )
-                    best_ood_test_return = new_map_unseen_result
+                    self.best_ood_test_return = new_map_unseen_result
 
-            if unseen_result > best_iid_test_return:
+            if unseen_result > self.best_iid_test_return:
                 self.policy.save_model(
                     os.path.join(
                         self.result_dir, self.model_name + "_best_iid_test.pth"
                     )
                 )
-                best_iid_test_return = unseen_result
+                self.best_iid_test_return = unseen_result

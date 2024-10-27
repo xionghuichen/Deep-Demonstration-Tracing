@@ -5,10 +5,13 @@ import gym
 import time
 import random
 from collections import deque
-
-from fvcore.nn import parameter_count_table
 import copy
+
+import gym
+from fvcore.nn import parameter_count_table
 from RLA import exp_manager, time_tracker, logger
+
+from task_sampler import TaskSampler
 from utils import set_seed, parameter_count_filter
 from config_loader import get_alg_args, write_config
 from buffer import save_buffer, load_buffer
@@ -16,7 +19,6 @@ from trainer import VPAMTrainer
 from algo.sac_goal_map_policy_critic_multi_task import MT_GoalMapPolicyMultiTaskSACAgent
 from multi_task_env_handler import get_env_handle, BasicMultiTaskEnvHandler
 from CONST import *
-import gym
 
 gym.register(
     id="ValetParkingAssistMaze-v0",
@@ -48,8 +50,6 @@ def noisy_observation(env, state, configs):
 
 ############################################## env specific functions ##############################################
 
-from task_sampler import TaskSampler
-
 
 def train(configs, env, env_handler):
     # init modules
@@ -67,7 +67,6 @@ def train(configs, env, env_handler):
 
     time.sleep(3.0)
     buffer_dir = trainer.buffer_dir
-    os.makedirs(buffer_dir, exist_ok=True)
     demo_dir = trainer.demo_dir
 
     # save configs
@@ -251,12 +250,14 @@ if __name__ == "__main__":
     configs = get_alg_args(config_file)
     set_seed(configs["seed"])  # set seed for reproduction
     env_handler = get_env_handle(configs["env_name"], configs=configs)
+    assert isinstance(env_handler, BasicMultiTaskEnvHandler)
     env = env_handler.create_env(configs)
     append_env_config(configs, configs["env_name"], env)
 
     # init logger
     if configs["debug"]:  # whether we are debugging
         out_dir = osp.join(CURRENT_FILE_DIRNAME, EXP_LOG_NAME, "out_debug")
+        # configs["eval_unseen_freq"] = 1
     else:
         out_dir = osp.join(CURRENT_FILE_DIRNAME, EXP_LOG_NAME, "exp")
     os.makedirs(out_dir, exist_ok=True)

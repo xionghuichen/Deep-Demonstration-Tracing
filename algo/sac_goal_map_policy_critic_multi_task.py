@@ -182,7 +182,7 @@ class MT_GoalMapPolicyMultiTaskSACAgent(MT_GoalMapPolicySACAgent):
         ]:
             res_dict[k] = []
         do_train = False
-        replace_sample = True
+        replace_sample = self.replace_sample
         max_len = 0
         for item in recent_buf_list:
             trans_buffer, traj_buffer, task_id, task_config = item
@@ -199,7 +199,6 @@ class MT_GoalMapPolicyMultiTaskSACAgent(MT_GoalMapPolicySACAgent):
                     or trans_buffer.size[0] < self.batch_size
                 ):
                     continue
-
             do_train = True
             if self.map_type == MapType.ID:
                 map_info = (
@@ -226,6 +225,7 @@ class MT_GoalMapPolicyMultiTaskSACAgent(MT_GoalMapPolicySACAgent):
             res_dict["traj"].append(traj.transpose(1, 2)[0])
             res_dict["goal"].append(traj.transpose(1, 2)[0, -1])
             max_len = np.maximum(max_len, traj[0].shape[0])
+
         if do_train:
             for k, v in res_dict.items():
                 if k in ["states", "actions", "next_states", "rewards", "masks"]:

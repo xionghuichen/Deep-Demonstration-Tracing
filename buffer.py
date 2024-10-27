@@ -116,10 +116,9 @@ class MT_TransitionBuffer:
         self.ptr[task_id] = (self.ptr[task_id] + 1) % self.buffer_size
         self.size[task_id] = min(self.size[task_id] + 1, self.buffer_size)
 
-    def random_sample(self, task_id, batch_size=None):
+    def random_sample(self, task_id, batch_size=None, replace_sample=True):
         # sanity check
         assert type(task_id) == int and task_id >= 0 and task_id < self.task_nums
-        replace_sample = True
         idx = list(range(self.size[task_id]))
         if batch_size != None:
             idx = np.random.choice(idx, size=batch_size, replace=replace_sample)
@@ -182,7 +181,6 @@ class TrajectoryBuffer:
         env_name,
         device,
         action_weight,
-        with_local_view,
         scale,
         add_bc_reward,
         do_scale,
@@ -209,7 +207,6 @@ class TrajectoryBuffer:
 
         self.device = device
         self.action_weight = action_weight
-        self.with_local_view = with_local_view
         self.scale = scale
         self.add_bc_reward = add_bc_reward
         self.do_scale = do_scale
@@ -312,7 +309,7 @@ class TrajectoryBuffer:
         env = self.demo_collect_env
         start, goal = self.env_handler.get_start_and_goal_from_demo(traj)
         env.custom_walls(walls)
-        env.reset(start=start, goal=goal, with_local_view=self.with_local_view)
+        env.reset(start=start, goal=goal, with_local_view=True)
         states, actions, next_states, rewards, masks = [], [], [], [], []
         cur_hists, next_hists, cur_last_inds, next_last_inds = [], [], [], []
 

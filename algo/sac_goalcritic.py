@@ -56,7 +56,6 @@ class MT_GoalSACAgent(MT_AttnSACAgent):
             self.env_name,
             self.device,
             self.action_weight,
-            self.with_local_view,
             self.scale,
             self.add_bc_reward,
             self.do_scale,

@@ -78,7 +78,7 @@ def rgb2grey(img):
     return gray
 
 
-class ContinuousMazeForPlot(gym.Env):
+class ContinuousMaze(gym.Env):
     """Continuous maze environment."""
 
     action_space = spaces.Box(-1, 1, (2,))
@@ -194,7 +194,7 @@ class ContinuousMazeForPlot(gym.Env):
         self.bound = 13
         self.local_view_dim = 100
         self.local_view_size = (10, 10)
-        self.with_local_view = False
+        self.with_local_view = True
         self.scale = self.screen_dim / (self.bound * 2)
         self.offset = self.screen_dim // 2
         self.walls = np.copy(self.default_walls)
@@ -503,7 +503,7 @@ class ContinuousMazeForPlot(gym.Env):
         seed=0,
         start=np.zeros(2),
         goal=np.ones(2),
-        with_local_view=False,
+        with_local_view=True,
         obs_drift=False,
     ) -> np.ndarray:
         self.seed = seed

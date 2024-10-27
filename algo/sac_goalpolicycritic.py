@@ -21,6 +21,7 @@ class MT_GoalPolicySACAgent(MT_GoalSACAgent):
 
     def __init__(self, configs: dict):
         super(MT_GoalPolicySACAgent, self).__init__(configs)
+        self.replace_sample = True
 
     def get_demo_trans(self, task_id, traj_buffer, demo_num=-1):
         if traj_buffer is None:
@@ -53,7 +54,7 @@ class MT_GoalPolicySACAgent(MT_GoalSACAgent):
             traj_buffer = self.traj_buffer
 
         states, actions, next_states, rewards, masks = trans_buffer.random_sample(
-            task_id, self.batch_size
+            task_id, self.batch_size, replace_sample=self.replace_sample
         )
         idx, traj = traj_buffer.random_sample(task_id)
 
