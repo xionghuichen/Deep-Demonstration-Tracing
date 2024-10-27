@@ -124,7 +124,7 @@ class VPAMTrainer(BasicTrainer):
             == (8 if configs["local_view_num"] == -1 else configs["local_view_num"]) + 4
         )
         # TODO: 这里不应该耦合
-        self.configs["map_num"] = len(train_map_ids)  # len(iid_train_m2ts.keys())
+        self.configs["map_num"] = len(all_maps)  # len(iid_train_m2ts.keys())
         self.configs["map_shape"] = map_shape
         self.configs["map_fig_dict"] = map_fig_dict
         self.iid_train_task_ids = iid_train_task_ids
