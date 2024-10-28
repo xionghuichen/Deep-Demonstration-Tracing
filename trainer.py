@@ -187,7 +187,6 @@ class VPAMTrainer(BasicTrainer):
                 avg_return, eval_exp_logs = eval_policy(
                     self.policy,
                     self.configs,
-                    logger,
                     traj=eval_traj,
                     walls=task_config["map"],
                     env_handler=self.env_handler,
@@ -228,7 +227,6 @@ class VPAMTrainer(BasicTrainer):
                     iid_test_ids_choose,
                     self.policy,
                     self.configs,
-                    logger,
                     self.img_dir,
                     self.task_id_to_task_config_list,
                     self.all_maps,
@@ -272,7 +270,6 @@ class VPAMTrainer(BasicTrainer):
                     ood_test_ids_choose,
                     self.policy,
                     self.configs,
-                    logger,
                     self.img_dir,
                     self.task_id_to_task_config_list,
                     self.all_maps,

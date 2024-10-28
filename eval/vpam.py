@@ -94,7 +94,8 @@ from utils import update_hist
 #     plt.imsave(img_path, rollout_maze)
 #     print(f"Result saved at {img_path}")
 
-
+                    
+                    
 def eval_policy(policy, configs, env_handler, eval_episodes=3, traj=None, walls=None):
     # todo: add hist
     hist_len = 3
@@ -190,7 +191,6 @@ def test_unseen(
     test_task_ids,
     policy,
     configs,
-    logger,
     img_dir,
     map_id_lst,
     all_maps,
