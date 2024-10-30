@@ -11,10 +11,14 @@ from fvcore.nn import parameter_count_table
 from utils import set_seed, parameter_count_filter
 from eval.vpam import eval_policy, test_unseen
 from buffer import save_buffer
+from task_sampler import TaskSampler
+from multi_task_env_handler import BasicMultiTaskEnvHandler
 
 
 class BasicTrainer:
-    def __init__(self, project_root, configs, env_handler) -> None:
+    def __init__(
+        self, project_root: str, configs: dict, env_handler: BasicMultiTaskEnvHandler
+    ) -> None:
         self.configs = configs
         self.project_root = project_root
         self.env_name = configs["env_name"]
@@ -29,12 +33,27 @@ class BasicTrainer:
         os.makedirs(self.img_dir, exist_ok=True)
         os.makedirs(self.demo_dir, exist_ok=True)
         os.makedirs(self.buffer_dir, exist_ok=True)
+        self.task_sampler = TaskSampler(
+            configs["task_repeated"], configs["task_random_sample_prob"]
+        )
+
+    def collect_demonstrations(self, configs):
+        self.iid_train_task_ids = None
+        self.all_trajs = None
+        pass
 
     def init_policy(self, policy, data_collect_env):
         self.policy = policy
         self.policy.init_component(self.env_handler, data_collect_env)
         self.load_demo_for_policy()
         self.log_parameters()
+
+    def init_training_setup(self):
+        self.task_sampler.construct_taskset(self.iid_train_task_ids)
+        
+    def sample_next_task(self):
+        task_id, update = self.task_sampler.sample_next()
+        return task_id, update
 
     def log_parameters(self):
         with open(
@@ -75,13 +94,11 @@ class BasicTrainer:
                 )
             )
 
-    def collect_demonstrations(self, configs):
-        self.iid_train_task_ids = None
-        self.all_trajs = None
-        pass
-
     def load_demo_for_policy(self):
         pass
+
+    def update_stats_after_episode(self, task_id, succeed):
+        self.task_sampler.update_failure_rate(task_id, succeed)
 
 
 class VPAMTrainer(BasicTrainer):
@@ -112,6 +129,7 @@ class VPAMTrainer(BasicTrainer):
             map_shape,
             map_fig_dict,
             all_maps,
+            map_to_task_dict,
         ) = get_dataset(
             configs["multi_map"],
             raw_data_file_path,
@@ -133,6 +151,8 @@ class VPAMTrainer(BasicTrainer):
         self.ood_tasks = ood_tasks
         self.all_trajs = all_trajs
         self.all_maps = all_maps
+        self.train_map_ids = train_map_ids
+        self.map_to_task_dict = map_to_task_dict
 
     def load_demo_for_policy(self):
         """
@@ -322,4 +342,36 @@ class VPAMTrainer(BasicTrainer):
                         self.result_dir, self.model_name + "_best_iid_test.pth"
                     )
                 )
-                self.best_iid_test_return = unseen_result
+            self.best_iid_test_return = unseen_result
+            hard_to_complete_task = []
+            for m_a in self.train_map_ids:
+                activate_failure_rate_cur_map = []
+                for t_id in self.map_to_task_dict[m_a]:
+                    if t_id in self.iid_train_task_ids:
+
+                        logger.record_tabular(
+                            "eval_failure_rates-detailed/" + "task_" + str(t_id),
+                            self.task_sampler.failure_rates[t_id],
+                            exclude=["csv"],
+                        )
+                        if self.task_sampler.failure_rates[t_id] > 0.5:
+                            hard_to_complete_task.append(t_id)
+                        activate_failure_rate_cur_map.append(
+                            self.task_sampler.failure_rates[t_id]
+                        )
+                logger.record_tabular(
+                    "eval_failure_rates/" + "map_" + str(m_a),
+                    np.mean(activate_failure_rate_cur_map),
+                    exclude=["csv"],
+                )
+                logger.record_tabular(
+                    "eval_failure_rates/hard_to_complete_task_rate",
+                    len(hard_to_complete_task) / len(self.iid_train_task_ids),
+                )
+            logger.info("hard_to_complete_task", hard_to_complete_task)
+            logger.record_tabular(
+                "eval_failure_rates",
+                np.mean(
+                    self.task_sampler.get_failure_rate_list(self.iid_train_task_ids)
+                ),
+            )

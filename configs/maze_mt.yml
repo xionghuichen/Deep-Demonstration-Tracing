@@ -89,7 +89,7 @@ action_weight: 0.9
 with_distance_reward: True
 distance_weight: 20
 max_space_dist: 2.0
-reward_fun_type: 'origin'
+reward_fun_type: 'bound'
 hit_wall_reward: -4. # 需要小于单步的ilrreward 的最小值
 reach_goal_reward: 15. # 需要明显大于 base / (1- gamma)
 no_coordinate: False

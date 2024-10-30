@@ -51,19 +51,17 @@ def noisy_observation(env, state, configs):
 ############################################## env specific functions ##############################################
 
 
-def train(configs, env, env_handler):
+def train(configs, env, env_handler: BasicMultiTaskEnvHandler):
     # init modules
     trainer = VPAMTrainer(CURRENT_FILE_DIRNAME, configs, env_handler)
     trainer.collect_demonstrations(configs)
     policy = MT_GoalMapPolicyMultiTaskSACAgent(configs)
-    task_sampler = TaskSampler(
-        configs["task_repeated"], configs["task_random_sample_prob"]
-    )
     data_collect_env = env_handler.env_creator(
         configs,
         collect_demo_data=True,
     )
     trainer.init_policy(policy, data_collect_env)
+    trainer.init_training_setup()
 
     time.sleep(3.0)
     buffer_dir = trainer.buffer_dir
@@ -88,24 +86,22 @@ def train(configs, env, env_handler):
 
     best_eval_returns = dict()
     runned_episodes = dict()
-    failure_episodes = dict()
+
     saved_maze_num = dict()
     for task_id in iid_train_task_ids:
         best_eval_returns[task_id] = float("-inf")
         runned_episodes[task_id] = 0
-        failure_episodes[task_id] = deque(maxlen=100)
         saved_maze_num[task_id] = 0
 
     episode_reward = 0
     episode_timesteps = 0
     episode_num = 0
     t = 0
-    task_sampler.construct_taskset(iid_train_task_ids)
 
     recent_buffer_list = deque(maxlen=configs["recent_buf_len"])
     task_id = None
     while t < int(configs["max_timesteps"] * 1.01):
-        task_id, update = task_sampler.sample_next()
+        task_id, update = trainer.sample_next_task()
         if update:
             if t != 0:
                 recent_buffer_list.append(
@@ -197,11 +193,8 @@ def train(configs, env, env_handler):
                 runned_episodes[task_id] += 1
                 policy.trans_buffer.stored_eps_num = runned_episodes[task_id]
                 succeed = env_handler.reach_goal(goal, state)
-                failure_episodes[task_id].append(0 if succeed else 1)
                 saved_maze_num[task_id] = (saved_maze_num[task_id] + 1) % 5
-                task_sampler.update_failure_rate(
-                    task_id, np.mean(failure_episodes[task_id])
-                )
+                trainer.update_stats_after_episode(task_id, succeed)
 
                 if runned_episodes[task_id] % 50 < 5:
                     trainer.visualize_trajs(

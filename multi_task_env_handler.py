@@ -41,6 +41,7 @@ class BasicMultiTaskEnvHandler:
         """
         pass
 
+
 class VPAMMultiTaskEnvHandler(BasicMultiTaskEnvHandler):
     def __init__(self, configs) -> None:
         super().__init__(configs)
@@ -122,18 +123,15 @@ class VPAMMultiTaskEnvHandler(BasicMultiTaskEnvHandler):
             [s_{T-1}, a_{T-1}]
         ]
         """
-        action_dim, coor_dim = 2, 2
         ind = np.random.choice(len(traj)) if random_start else int(0)
-        start = np.array(
-            traj[ind][-(action_dim + coor_dim) : -action_dim], dtype=np.int64
-        )
+        start = np.array(traj[ind][self.coor_dim : -self.action_dim], dtype=np.int64)
         start = start.astype(np.float64)
         noise = (1 - 2 * np.random.rand(*start.shape)) * noise_scaler
         start += noise
 
         last_step, last_action = (
-            np.array(traj[-1][-(action_dim + coor_dim) : -action_dim], dtype=np.int64),
-            np.array(traj[-1][-action_dim:], dtype=np.int64),
+            np.array(traj[-1][self.coor_dim : -self.action_dim], dtype=np.int64),
+            np.array(traj[-1][-self.action_dim :], dtype=np.int64),
         )
         goal = last_step + last_action
         return start, goal

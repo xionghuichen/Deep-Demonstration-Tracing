@@ -307,16 +307,13 @@ class TrajectoryBuffer:
 
     def _get_trans(self, traj, task_id, walls):
         env = self.demo_collect_env
-        start, goal = self.env_handler.get_start_and_goal_from_demo(traj)
+        start, goal = self.env_handler.get_start_and_goal_from_demo(
+            traj, random_start=False, noise_scaler=0.0
+        )
         env.custom_walls(walls)
         env.reset(start=start, goal=goal, with_local_view=True)
         states, actions, next_states, rewards, masks = [], [], [], [], []
-        cur_hists, next_hists, cur_last_inds, next_last_inds = [], [], [], []
-
-        cur_hist = deque(maxlen=self.hist_len)
-        next_hist = deque(maxlen=self.hist_len)
         pre_action = None
-        full_trajectory, reward_traj = [], []
 
         for s_a in traj:
             state, action = s_a[:-2], s_a[-2:]
@@ -331,37 +328,8 @@ class TrajectoryBuffer:
                 reward,
             )
 
-            # _, ilr_info = self.get_ilr(state, action, task_id, done)
-            # if self.add_bc_reward:
-            #     manual_reward_fun_kwargs = {
-            #         "min_dist": ilr_info["min_dist"],
-            #         "min_raw_idx": ilr_info["min_raw_idx"],
-            #         "traj_len": len(traj),
-            #         "distance_weight": self.distance_weight,
-            #         "done": done,
-            #         "max_space_dist": self.max_space_dist,
-            #         "is_hit": False,
-            #         "reward_fun_type": self.reward_fun_type,
-            #     }
-            #     ilr_reward = manual_reward_fun(**manual_reward_fun_kwargs)
-            #     reward += ilr_reward
-            # if self.do_scale:
-            #     reward /= self.scale
             if pre_action is None:
                 pre_action = np.zeros(*action.shape)
-            full_trajectory.append(np.hstack([np.copy(state), np.copy(pre_action)]))
-            reward_traj.append([reward])
-
-            cur_hist_np, cur_last_id = update_hist(
-                cur_hist, state, pre_action, self.hist_len, dim=0
-            )
-
-            if len(next_hist) == 0:
-                next_hist.append(np.concatenate((state, pre_action), axis=-1))
-
-            next_hist_np, next_last_id = update_hist(
-                next_hist, next_state, action, self.hist_len, dim=0
-            )
 
             pre_action = action
 
@@ -370,14 +338,6 @@ class TrajectoryBuffer:
             next_states.append(next_state)
             rewards.append([reward])
             masks.append([1.0 - done])
-            cur_hists.append(cur_hist_np)
-            cur_last_inds.append(cur_last_id)
-            next_hists.append(next_hist_np)
-            next_last_inds.append(next_last_id)
-
-        full_trajectory.append(np.hstack([np.copy(next_state), np.copy(action)]))
-        full_trajectory = np.vstack(full_trajectory)
-        reward_traj = np.array(reward_traj)
 
         res = (
             torch.FloatTensor(np.array(states)).to(self.device),

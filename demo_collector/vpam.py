@@ -198,4 +198,5 @@ def get_dataset(
         map_shape,
         map_fig_dict,
         all_maps,
+        map_to_task_dict
     )

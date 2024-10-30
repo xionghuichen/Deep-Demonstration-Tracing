@@ -2,6 +2,7 @@ import numpy as np
 import random
 import copy
 import os
+from collections import deque
 
 
 class TaskSampler:
@@ -14,8 +15,10 @@ class TaskSampler:
     def construct_taskset(self, iid_train_task_ids):
         self.iid_train_task_ids = iid_train_task_ids
         self.failure_rates = {}
+        self.failure_episodes = {}
         for tid in self.iid_train_task_ids:
             self.failure_rates[tid] = 1
+            self.failure_episodes[tid] = deque(maxlen=100)
 
     def sample_next(self):
         update = False
@@ -42,7 +45,11 @@ class TaskSampler:
                     ]  # degrade
         return task_id, update
 
-    def update_failure_rate(self, task_id, failure_rate):
-        self.failure_rates[task_id] = failure_rate
+    def update_failure_rate(self, task_id, succeed):
+        self.failure_episodes[task_id].append(0 if succeed else 1)
+        self.failure_rates[task_id] = np.mean(self.failure_episodes[task_id])
         self.task_repeat_counter += 1
         return
+    
+    def get_failure_rate_list(self, task_ids):
+        return [self.failure_rates[tid] if tid in self.failure_rates else 1 for tid in task_ids]
