@@ -6,11 +6,32 @@ from collections import deque
 
 
 class TaskSampler:
+
+    """
+    TaskSampler is responsible for sampling tasks based on their failure rates and a given probability.
+    Attributes:
+        task_repeated (int): Number of times a task should be repeated before considering a new task.
+        task_random_sample_prob (float): Probability of randomly sampling a new task.
+        task_repeat_counter (int): Counter to keep track of task repetitions.
+        iid_train_task_ids (list): List of task IDs used for training.
+        failure_rates (dict): Dictionary to store failure rates of tasks.
+        failure_episodes (dict): Dictionary to store failure episodes of tasks.
+    Methods:
+        __init__(task_repeated, task_random_sample_prob):
+            Initializes the TaskSampler with the given parameters.
+        construct_taskset(iid_train_task_ids):
+            Constructs the task set with the given task IDs and initializes failure rates and episodes.
+        sample_next():
+            Samples the next task based on failure rates and random sampling probability.
+        update_failure_rate(task_id, succeed):
+            Updates the failure rate of the given task based on whether it succeeded or failed.
+        get_failure_rate_list(task_ids):
+            Returns a list of failure rates for the given task IDs.    
+    """
     def __init__(self, task_repeated, task_random_sample_prob) -> None:
         self.task_repeated = task_repeated
         self.task_random_sample_prob = task_random_sample_prob
         self.task_repeat_counter = 0
-        self.eps = 1e-6
 
     def construct_taskset(self, iid_train_task_ids):
         self.iid_train_task_ids = iid_train_task_ids
@@ -33,7 +54,7 @@ class TaskSampler:
                         for tid in self.iid_train_task_ids
                     ]
                 )
-                task_sample_prob = failure_rate_list + self.eps
+                task_sample_prob = failure_rate_list
                 if sum(task_sample_prob) != 0:
                     task_sample_prob = task_sample_prob / sum(task_sample_prob)
                     task_id = np.random.choice(
@@ -50,6 +71,9 @@ class TaskSampler:
         self.failure_rates[task_id] = np.mean(self.failure_episodes[task_id])
         self.task_repeat_counter += 1
         return
-    
+
     def get_failure_rate_list(self, task_ids):
-        return [self.failure_rates[tid] if tid in self.failure_rates else 1 for tid in task_ids]
+        return [
+            self.failure_rates[tid] if tid in self.failure_rates else 1
+            for tid in task_ids
+        ]

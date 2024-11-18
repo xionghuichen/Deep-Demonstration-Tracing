@@ -11,8 +11,7 @@ import gym
 from fvcore.nn import parameter_count_table
 from RLA import exp_manager, time_tracker, logger
 
-from task_sampler import TaskSampler
-from utils import set_seed, parameter_count_filter
+from utils import set_seed
 from config_loader import get_alg_args, write_config
 from buffer import save_buffer, load_buffer
 from trainer import VPAMTrainer

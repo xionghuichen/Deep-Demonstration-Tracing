@@ -4,6 +4,8 @@ import gym
 import tqdm
 import cv2
 
+from utils import set_seed
+
 
 def get_start_goal(traj, random_start=False, noise_scaler=0.1, in_eval=False):
     """
@@ -103,8 +105,9 @@ def _get_raw_data_pkg(raw_data_file_path, env_for_refresh):
 
 
 def get_dataset(
-    multi_map, raw_data_file_path, env_for_refresh, task_num_per_map, train_ratio
+    multi_map, raw_data_file_path, env_for_refresh, task_num_per_map, train_ratio, original_seed
 ):
+    set_seed(0) # set seed for the same task selection
     data_pkg = _get_raw_data_pkg(raw_data_file_path, env_for_refresh)
     img_recale = 0.2
     map_shape = None
@@ -184,6 +187,7 @@ def get_dataset(
         print("-------------------")
         print("Successfully load single map dataset!")
         print("-------------------")
+    map_shape = (1, int(width * img_recale), int(height * img_recale))
     task_id_to_config_list = []
     for map_info in task_id_to_map_list:
         task_id_to_config_list.append({"map_id": map_info, "map": all_maps[map_info]})
@@ -198,5 +202,5 @@ def get_dataset(
         map_shape,
         map_fig_dict,
         all_maps,
-        map_to_task_dict
+        map_to_task_dict,
     )

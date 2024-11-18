@@ -12,10 +12,8 @@ from pygame import gfxdraw
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 RED = (255, 0, 0)
-GREEN = (112, 173, 71)
+GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
-GRAY = (128, 128, 128)
-BROWN = (101, 67, 33)
 
 """
 Goal list, from easy to hard
@@ -194,19 +192,16 @@ class ContinuousMaze(gym.Env):
         self.bound = 13
         self.local_view_dim = 100
         self.local_view_size = (10, 10)
-        self.with_local_view = True
+        self.with_local_view = False
         self.scale = self.screen_dim / (self.bound * 2)
         self.offset = self.screen_dim // 2
         self.walls = np.copy(self.default_walls)
-        self.walls_for_plot = np.copy(self.default_walls)
         self.set_coordinate_drift()
 
         self.obstacle_prob = obstacle_prob
 
         self.local_view_num = local_view_num
         self.local_view_depth = local_view_depth
-
-        self.extra_obstacle_rects = []
 
         self.action_disturbance = action_disturbance
 
@@ -220,7 +215,6 @@ class ContinuousMaze(gym.Env):
 
     def custom_walls(self, walls: np.ndarray) -> None:
         self.walls = np.copy(walls)
-        self.walls_for_plot = np.copy(walls)
 
     def generate_random_maze(self):
         """generate maze by random bfs algo"""
@@ -377,8 +371,7 @@ class ContinuousMaze(gym.Env):
             if intersection is not None:
                 min_dist = min(min_dist, np.linalg.norm(intersection - pos))
                 if min_dist == 0:
-                    pass
-                    # print('sfa')
+                    print("sfa")
         return min_dist
 
     def get_obstacle_local_view(self, pos):
@@ -503,7 +496,7 @@ class ContinuousMaze(gym.Env):
         seed=0,
         start=np.zeros(2),
         goal=np.ones(2),
-        with_local_view=True,
+        with_local_view=False,
         obs_drift=False,
     ) -> np.ndarray:
         self.seed = seed
@@ -528,35 +521,7 @@ class ContinuousMaze(gym.Env):
 
         return self.get_obs(self.pos)
 
-    def render(
-        self,
-        mode: str = "human",
-        exp_traj=None,
-        rollout_dot_size=3,
-        exp_dot_size=3,
-        start_goal_size=6,
-        half_line_width=1,
-        obstacle_color=(101, 67, 33),
-    ):
-        # rollout_dot_size, exp_dot_size, start_goal_size = 3, 3, 6
-        # half_line_width = 1
-
-        def convert_line2polygon(x1, y1, x2, y2, half_line_width):
-            direct = np.array([x2 - x1, y2 - y1])
-            line_length = np.linalg.norm(direct)
-            direct = direct / line_length
-            vertical_direction = np.array([-direct[1], direct[0]]) * half_line_width
-
-            p1, p2 = np.array([x1, y1]) - direct, np.array([x2, y2]) + direct
-            point_lst = [
-                p1 + vertical_direction,
-                p2 + vertical_direction,
-                p2 - vertical_direction,
-                p1 - vertical_direction,
-            ]
-
-            return [(int(point[0]), int(point[1])) for point in point_lst]
-
+    def render(self, mode: str = "human", exp_traj=None):
         if self.screen is None:
             try:
                 pygame.display.list_modes()
@@ -575,71 +540,49 @@ class ContinuousMaze(gym.Env):
             else:
                 self.screen = pygame.Surface((self.screen_dim, self.screen_dim))
         self.surf = pygame.Surface((self.screen_dim, self.screen_dim))
-        self.surf.fill(WHITE)
+        self.surf.fill(BLACK)
 
         # exp traj
         if exp_traj is not None:
             for pos in exp_traj[:, -4:-2]:
                 x, y = pos * self.scale + self.offset
-                gfxdraw.filled_circle(self.surf, int(x), int(y), exp_dot_size, GRAY)
-                # gfxdraw.filled_polygon(self.surf, convert_line2polygon(x, y, x+1, y+1, half_line_width), BLACK)
+                gfxdraw.filled_circle(self.surf, int(x), int(y), 1, WHITE)
 
         # history positions
         start_x, start_y = self.all_pos[0] * self.scale + self.offset  # start point
-        gfxdraw.filled_circle(
-            self.surf, int(start_x), int(start_y), start_goal_size, BLUE
-        )
+        gfxdraw.filled_circle(self.surf, int(start_x), int(start_y), 3, BLUE)
         for pos in self.all_pos[1:]:
             x, y = pos * self.scale + self.offset
-            gfxdraw.filled_circle(self.surf, int(x), int(y), rollout_dot_size, RED)
+            gfxdraw.filled_circle(self.surf, int(x), int(y), 1, RED)
 
         # connect the dots of the hist trajectory
         for pos1, pos2 in zip(self.all_pos[1:], self.all_pos[:-1]):
             x_pos1, y_pos1 = pos1 * self.scale + self.offset
             x_pos2, y_pos2 = pos2 * self.scale + self.offset
-            # gfxdraw.line(self.surf,int(x_pos1),int(y_pos1),int(x_pos2),int(y_pos2),RED)
-            gfxdraw.filled_polygon(
-                self.surf,
-                convert_line2polygon(x_pos1, y_pos1, x_pos2, y_pos2, half_line_width),
-                RED,
+            gfxdraw.line(
+                self.surf, int(x_pos1), int(y_pos1), int(x_pos2), int(y_pos2), RED
             )
 
         # walls
-        for wall in self.walls_for_plot:
+        for wall in self.walls:
             x1, y1 = wall[0] * self.scale + self.offset
             x2, y2 = wall[1] * self.scale + self.offset
-            # gfxdraw.line(self.surf, int(x1), int(y1), int(x2), int(y2), WHITE)
-            gfxdraw.filled_polygon(
-                self.surf, convert_line2polygon(x1, y1, x2, y2, half_line_width), BLACK
-            )
-
-        # obstacle
-        if len(self.extra_obstacle_rects) > 0:
-            for rect in self.extra_obstacle_rects:
-                # print(self.extra_obstacle_rects)
-                # print(rect)
-                rect = rect * self.scale + self.offset
-                gfxdraw.filled_polygon(self.surf, rect.astype(np.int32), obstacle_color)
+            gfxdraw.line(self.surf, int(x1), int(y1), int(x2), int(y2), WHITE)
 
         # goals
         goal_x, goal_y = self.GOAL_POINT * self.scale + self.offset
-        gfxdraw.filled_circle(
-            self.surf, int(goal_x), int(goal_y), start_goal_size, GREEN
-        )
+        gfxdraw.filled_circle(self.surf, int(goal_x), int(goal_y), 3, GREEN)
 
         self.surf = pygame.transform.flip(self.surf, flip_x=False, flip_y=True)
         self.screen.blit(self.surf, (0, 0))
-        res = None
         if mode == "human":
             pygame.display.flip()
         elif mode == "rgb_array":
-            res = np.transpose(
+            return np.transpose(
                 np.array(pygame.surfarray.pixels3d(self.screen)), axes=(1, 0, 2)
             )
         else:
-            res = self.isopen
-        self.close()
-        return res
+            return self.isopen
 
     def close(self):
         if self.screen is not None:
@@ -673,7 +616,7 @@ class ContinuousMaze(gym.Env):
         if (exp_traj is None) or (len(exp_traj) < 5):
             return 0
 
-        extra_walls, self.extra_obstacle_rects = [], []
+        extra_walls = []
         exp_traj = np.copy(exp_traj)
 
         begin_index = 0
@@ -752,10 +695,6 @@ class ContinuousMaze(gym.Env):
                 extra_walls.append(rect)
 
                 cd_time = 4
-
-                self.extra_obstacle_rects.append(np.array([A, B, D, C]))
-
-        # self.extra_obstacle_rects=extra_walls
 
         if len(extra_walls) > 0:
             extra_walls = np.vstack(extra_walls)

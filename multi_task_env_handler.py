@@ -59,7 +59,7 @@ class VPAMMultiTaskEnvHandler(BasicMultiTaskEnvHandler):
         """
         To compatible with the original code, we keep this function.
         """
-        return self.create_env(raw_rew_func)
+        return self.create_env(raw_rew_func, collect_demo_data)
 
     def create_env(self, raw_rew_func=False, collect_demo_data=False):
         """
@@ -177,7 +177,7 @@ class VPAMOSILRewardFunc(BasicOSILRewardFunc):
         self.coor_dim = coor_dim
 
     def __call__(self, demo_traj, state, action, done, task_reward):
-        min_dist, min_dist_idx = self.find_min_dist(demo_traj, state, action)
+        min_dist_idx, min_dist = self.find_min_dist(demo_traj, state, action)
         manual_reward_fun_kwargs = {
             "min_dist": min_dist,
             "min_dist_idx": min_dist_idx,
@@ -199,8 +199,9 @@ class VPAMOSILRewardFunc(BasicOSILRewardFunc):
 
         else:
             query_value = state[self.coor_dim : self.state_dim]
+            # compute euclidean distance
             dist_array = np.sqrt(
-                np.mean(
+                np.sum(
                     np.square(
                         target_traj[:, self.coor_dim : self.state_dim] - query_value
                     ),

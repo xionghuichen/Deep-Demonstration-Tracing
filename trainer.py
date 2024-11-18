@@ -16,6 +16,39 @@ from multi_task_env_handler import BasicMultiTaskEnvHandler
 
 
 class BasicTrainer:
+    """
+    BasicTrainer is responsible for managing the training process of a model within a multi-task environment.
+    Attributes:
+        project_root (str): The root directory of the project.
+        configs (dict): Configuration parameters for the trainer.
+        env_handler (BasicMultiTaskEnvHandler): Handler for the multi-task environment.
+        env_name (str): Name of the environment.
+        model_name (str): Name of the model.
+        result_dir (str): Directory to store results.
+        tmp_data_dir (str): Directory to store temporary data.
+        img_dir (str): Directory to store images.
+        demo_dir (str): Directory to store demonstration buffers.
+        buffer_dir (str): Directory to store training buffers.
+        task_sampler (TaskSampler): Sampler for tasks based on configuration parameters.
+    Methods:
+        __init__(project_root: str, configs: dict, env_handler: BasicMultiTaskEnvHandler):
+            Initializes the BasicTrainer with the given project root, configurations, and environment handler.
+        collect_demonstrations(configs):
+            Collects demonstrations based on the provided configurations.
+        init_policy(policy, data_collect_env):
+            Initializes the policy with the environment handler and data collection environment, loads demonstrations for the policy, and logs parameters.
+        init_training_setup():
+            Sets up the training environment by constructing the task set.
+        sample_next_task():
+            Samples the next task to be performed and returns the task ID and update status.
+        log_parameters():
+            Logs the parameters of the policy components to a file.
+        load_demo_for_policy():
+            Loads demonstrations for the policy.
+        update_stats_after_episode(task_id, succeed):
+            Updates the failure rate of a task based on the success of the episode.
+    """
+
     def __init__(
         self, project_root: str, configs: dict, env_handler: BasicMultiTaskEnvHandler
     ) -> None:
@@ -50,7 +83,7 @@ class BasicTrainer:
 
     def init_training_setup(self):
         self.task_sampler.construct_taskset(self.iid_train_task_ids)
-        
+
     def sample_next_task(self):
         task_id, update = self.task_sampler.sample_next()
         return task_id, update
@@ -136,6 +169,7 @@ class VPAMTrainer(BasicTrainer):
             env_for_refresh,
             configs["task_num_per_map"],
             configs["train_ratio"],
+            configs["seed"],
         )
         assert (
             all_trajs[0].shape[-1]
