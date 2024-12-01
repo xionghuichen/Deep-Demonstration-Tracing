@@ -74,3 +74,5 @@ python -m sac_maze.sac_maze_tp --description "2500_DDT"  --debug --device cuda:0
 python -m sac_maze.sac_maze_tp --description "sm_DDT"  --test --device cuda:0  --seed 0   --reward_fun_type bound --training_method origin  --max_timesteps 1000000 
 
 
+
+删除无用的临时数据：rm -rf RLA_LOG/exp/tmp_data/

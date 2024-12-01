@@ -127,7 +127,6 @@ local_view_error_weight: 0.5
 sync_margin: 50000
 sync_logs: False
 
-anneal_entropy: False
 
 no_itor: False
 

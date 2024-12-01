@@ -220,7 +220,7 @@ class AttentionGaussianMultiTaskActor(BasicActor):
         self.action_dim = action_dim
         self.with_goal = False
         self.with_task_emb = False
-        self.infer_only_by_acs = True
+        self.infer_only_by_acs = False
         self.no_coordinate = no_coordinate
         if self.no_coordinate:
             print("------no coordinate!!!------")
