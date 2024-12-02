@@ -76,3 +76,6 @@ python -m sac_maze.sac_maze_tp --description "sm_DDT"  --test --device cuda:0  -
 
 
 删除无用的临时数据：rm -rf RLA_LOG/exp/tmp_data/
+
+
+运行代码：python main_ddt.py --device cuda:0 --description "no-obstacle-fix-rew-bug-acs" --multi_map --obstacle_prob 0.0
