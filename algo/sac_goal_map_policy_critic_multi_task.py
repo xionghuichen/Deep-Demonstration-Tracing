@@ -1,15 +1,13 @@
 # Created by xionghuichen at 2022/9/21
 # Email: chenxh@lamda.nju.edu.cn
 import sys
-import os
 from itertools import chain
 import numpy as np
 import torch
 import torch.optim as optim
 from torch.distributions.normal import Normal
 
-from torch.nn.utils.rnn import pad_sequence
-from algo.sac_goal_map_policy_critic import MT_GoalMapPolicySACAgent
+from algo.base_agent import BaseAgent
 from model.actor_multi_task import (
     TransformerGaussianMultiTaskActor,
     AttentionGaussianMultiTaskActor,
@@ -19,24 +17,15 @@ from model.actor_multi_task import (
 from model.critic_multi_task import GoalMapMLPMultiTaskCritic, AttenMultiTaskCritic
 import torch.nn.functional as F
 from torch_utils import soft_update, preprocess_traj
-from CONST import MapType
-
-# from consts import *
-
 
 # used
-class MT_GoalMapPolicyMultiTaskSACAgent(MT_GoalMapPolicySACAgent):
+class MT_GoalMapPolicyMultiTaskSACAgent(BaseAgent):
     """
     Soft Actor Critic
     """
 
     def __init__(self, configs: dict):
         super(MT_GoalMapPolicyMultiTaskSACAgent, self).__init__(configs)
-        self.use_transformer = configs["use_transformer"]
-        self.use_rnn_critic = configs["use_rnn_critic"]
-        self.use_only_decoder = configs["use_only_decoder"]
-        self.use_rnn_actor = configs["use_rnn_actor"]
-        self.configs = configs
 
     def init_critic(self):
         # Q1
@@ -167,78 +156,6 @@ class MT_GoalMapPolicyMultiTaskSACAgent(MT_GoalMapPolicySACAgent):
 
         return action, log_prob
 
-    def get_multi_map_samples(self, recent_buf_list):
-        res_dict = {}
-        for k in [
-            "map_info",
-            "states",
-            "actions",
-            "next_states",
-            "rewards",
-            "masks",
-            "traj",
-            "goal",
-        ]:
-            res_dict[k] = []
-        do_train = False
-        replace_sample = self.replace_sample
-        max_len = 0
-        for item in recent_buf_list:
-            trans_buffer, traj_buffer, task_id, task_config = item
-            map_id = task_config["map_id"]
-            if replace_sample:
-                if (
-                    trans_buffer.stored_eps_num < self.start_epi
-                    or trans_buffer.size[0] < 2.0
-                ):
-                    continue
-            else:
-                if (
-                    trans_buffer.stored_eps_num < self.start_epi
-                    or trans_buffer.size[0] < self.batch_size
-                ):
-                    continue
-            do_train = True
-            if self.map_type == MapType.ID:
-                map_info = (
-                    torch.tensor(map_id, dtype=torch.int32).to(self.device).long()
-                )
-            elif self.map_type == MapType.FIG:
-                map_info = torch.from_numpy(
-                    (self.map_fig_dict[map_id] / 255).astype(np.float32)
-                ).to(self.device)
-            else:
-                raise RuntimeError
-            states, actions, next_states, rewards, masks, traj = self.get_samples(
-                0,
-                trans_buffer,
-                traj_buffer,
-                int(self.batch_size / len(recent_buf_list)),
-            )
-            res_dict["map_info"].append(map_info)
-            res_dict["states"].append(states)
-            res_dict["actions"].append(actions)
-            res_dict["next_states"].append(next_states)
-            res_dict["rewards"].append(rewards)
-            res_dict["masks"].append(masks)
-            res_dict["traj"].append(traj.transpose(1, 2)[0])
-            res_dict["goal"].append(traj.transpose(1, 2)[0, -1])
-            max_len = np.maximum(max_len, traj[0].shape[0])
-
-        if do_train:
-            for k, v in res_dict.items():
-                if k in ["states", "actions", "next_states", "rewards", "masks"]:
-                    res_dict[k] = torch.stack(v, dim=1)
-                elif k in ["traj"]:
-                    res_dict[k] = pad_sequence(
-                        res_dict["traj"], batch_first=True
-                    ).transpose(1, 2)
-                    pass
-                else:
-                    res_dict[k] = torch.stack(v, dim=0)
-        return res_dict, do_train
-
-
     def update(
         self, state, action, next_state, reward, done, task_id, map_id, recent_buf_list
     ):
@@ -366,21 +283,3 @@ class MT_GoalMapPolicyMultiTaskSACAgent(MT_GoalMapPolicySACAgent):
             )
 
         return self.info
-
-    def load_actor(self, model_path):
-        if not os.path.exists(model_path):
-            raise FileNotFoundError("Model file not found: {}".format(model_path))
-        else:
-            state_dicts = torch.load(model_path)
-            for model in self.models:
-                if model == "actor":
-                    if isinstance(
-                        self.models[model], torch.Tensor
-                    ):  # especially for sac, which has log_alpha to be loaded
-                        self.models[model] = state_dicts[model][model]
-                    else:
-                        self.models[model].load_state_dict(state_dicts[model])
-        # self.log_alpha.data = self.models["log_alpha"].data
-        # self.alpha = self.log_alpha.clone().detach().exp().item()
-
-        print(f"Successfully load model from {model_path}!")

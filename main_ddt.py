@@ -3,12 +3,10 @@ import os.path as osp
 import numpy as np
 import gym
 import time
-import random
 from collections import deque
 import copy
 
 import gym
-from fvcore.nn import parameter_count_table
 from RLA import exp_manager, time_tracker, logger
 
 from utils import set_seed

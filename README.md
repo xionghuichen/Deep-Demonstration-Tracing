@@ -38,7 +38,8 @@ python main_ddt.py --device cuda:0 --description "sac maze"
 # 默认实验结果会保存到out_test文件夹下，可用于debug
 python main_ddt.py --device cuda:0 --description "sac maze" --test
 ```
-
+python main_ddt.py --device cpu --description "sac maze" --multi_map
+# mod /home/yejunyin/opensource_imitator/Deep-Demonstration-Tracing/RLAssistant/RLA/easy_log/tester.py 536line
 **备注**：模型在开始运行前会加载configs/maze_mt.yml中的相关配置，关于相关参数的含义请看对应注释或通过该参数的名字即可得知
 
 ## cmd cheetsheet
