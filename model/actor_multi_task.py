@@ -6,10 +6,11 @@ from os import stat
 import torch
 import torch.nn as nn
 import numpy as np
-from torch_utils import build_mlp_extractor, weight_init, ROT_feature_dim
+from torch_utils import build_mlp_extractor, weight_init
 from model.attention import PositionalEncoding
 from model.actor import TransformerGaussianActor, BasicActor, LOG_STD_MIN, LOG_STD_MAX
 from model.transformer import Transformer, AttenRepresentationBlock
+from torch_utils import CatNet
 
 
 class TransformerGaussianMultiTaskActor(TransformerGaussianActor):
@@ -196,7 +197,7 @@ from torch.nn import Linear
 from torch.nn import LayerNorm
 
 
-class AttentionGaussianMultiTaskActor(BasicActor):
+class AttentionGaussianMultiTaskActor(nn.Module):
     def __init__(
         self,
         state_dim,
@@ -211,8 +212,10 @@ class AttentionGaussianMultiTaskActor(BasicActor):
         state_std_independent=False,
         share_state_encoder=False,
         no_coordinate=False,
+        seperate_encode = False,
+        **kwargs
     ):
-        super().__init__(state_dim, action_dim)
+        super().__init__()
         self.state_std_independent = state_std_independent
         self.share_state_encoder = share_state_encoder
         # input_dim = state_dim + action_dim
@@ -220,10 +223,10 @@ class AttentionGaussianMultiTaskActor(BasicActor):
         self.action_dim = action_dim
         self.with_goal = False
         self.with_task_emb = False
-        self.infer_only_by_acs = False
-        self.no_coordinate = no_coordinate
-        if self.no_coordinate:
-            print("------no coordinate!!!------")
+        self.infer_only_by_acs = True
+        self.no_coordinate = False
+        self.seperate_encode = False
+
         if self.with_goal:
             input_dim = state_dim + action_dim + state_dim
         else:
@@ -231,10 +234,8 @@ class AttentionGaussianMultiTaskActor(BasicActor):
         # traj encoder
         if self.share_state_encoder:
             self.traj_encoder = nn.Sequential(
-                nn.Linear(embed_dim + action_dim, embed_dim),
-                nn.LeakyReLU(),
-                nn.Linear(embed_dim, embed_dim),
-                nn.LeakyReLU(),
+                nn.Linear(embed_dim + action_dim, embed_dim), nn.LeakyReLU(),
+                nn.Linear(embed_dim, embed_dim), nn.LeakyReLU(),
             )
         else:
             self.traj_encoder = nn.Sequential(
@@ -275,54 +276,30 @@ class AttentionGaussianMultiTaskActor(BasicActor):
 
         for i in range(num_encoder_layers):
             if i == 0:
-                module_list.append(
-                    nn.Sequential(
-                        nn.Linear(input_dim + emb_dim_after_pool, embed_dim),
-                        nn.LeakyReLU(),
-                    )
-                )
+                if self.seperate_encode:
+                    # module_list.append(nn.Sequential(nn.Linear(input_dim + emb_dim_after_pool, embed_dim), nn.LeakyReLU()))
+                    module_list.append(nn.Sequential(CatNet(embed_dim), nn.LeakyReLU()))
+                else:
+                    module_list.append(nn.Sequential(nn.Linear(input_dim + emb_dim_after_pool, embed_dim), nn.LeakyReLU()))
             else:
-                module_list.append(
-                    AttenRepresentationBlock(
-                        d_model=embed_dim,
-                        nhead=num_heads,
-                        dropout=dropout,
-                        batch_first=True,
-                        activation=act_fn,
-                        dim_feedforward=dim_feedforward,
-                    )
-                )
+                module_list.append(AttenRepresentationBlock(d_model=embed_dim, nhead=num_heads, dropout=dropout,
+                                                            batch_first=True, activation=act_fn,
+                                                            dim_feedforward=dim_feedforward))
         self.qk_encoder = nn.ModuleList(module_list)
+
         module_list = []
         for i in range(num_encoder_layers):
             if i == 0:
                 if self.infer_only_by_acs:
                     module_list.append(
-                        nn.Sequential(
-                            nn.Linear(action_dim + emb_dim_after_pool, embed_dim),
-                            nn.LeakyReLU(),
-                        )
-                    )
+                        nn.Sequential(nn.Linear(action_dim + emb_dim_after_pool, embed_dim), nn.LeakyReLU()))
                 else:
-                    module_list.append(
-                        nn.Sequential(
-                            nn.Linear(
-                                input_dim + action_dim + emb_dim_after_pool, embed_dim
-                            ),
-                            nn.LeakyReLU(),
-                        )
-                    )
+                    module_list.append(nn.Sequential(nn.Linear(input_dim + action_dim + emb_dim_after_pool, embed_dim),
+                                                     nn.LeakyReLU()))
             else:
-                module_list.append(
-                    AttenRepresentationBlock(
-                        d_model=embed_dim,
-                        nhead=num_heads,
-                        dropout=dropout,
-                        batch_first=True,
-                        activation=act_fn,
-                        dim_feedforward=dim_feedforward,
-                    )
-                )
+                module_list.append(AttenRepresentationBlock(d_model=embed_dim, nhead=num_heads, dropout=dropout,
+                                                            batch_first=True, activation=act_fn,
+                                                            dim_feedforward=dim_feedforward))
         self.v_encoder = nn.ModuleList(module_list)
 
         # mean and log std
@@ -331,10 +308,10 @@ class AttentionGaussianMultiTaskActor(BasicActor):
             self.log_std = nn.Parameter(torch.zeros(1, action_dim), requires_grad=True)
         else:
             self.log_std = nn.Linear(embed_dim, action_dim)
+        self.last_embed = None
+        self.last_state = None
 
-    def _mutli_task_preprocess_traj(
-        self, traj, goal, batch_size, encoding=True, with_acs=False
-    ):
+    def _mutli_task_preprocess_traj(self, traj, goal, batch_size, encoding=True, with_acs=False):
         traj = traj.transpose(1, 2)  # [task_size, seq_len, state_dim + action_dim]
         if goal is None:
             assert traj.shape[0] == 1
@@ -342,29 +319,15 @@ class AttentionGaussianMultiTaskActor(BasicActor):
         # goal = traj[:, -1, :]  # [task_size, state_dim + action_dim]
         if self.share_state_encoder:
             # traj and state share state encoder
-            states, actions = traj[:, :, : self.state_dim], traj[:, :, self.state_dim :]
+            states, actions = traj[:, :, :self.state_dim], traj[:, :, self.state_dim:]
             if self.with_goal:
                 if with_acs:
                     states = torch.cat(
-                        (
-                            states,
-                            actions,
-                            torch.repeat_interleave(
-                                torch.unsqueeze(goal, dim=1), states.shape[1], 1
-                            ),
-                        ),
-                        dim=-1,
-                    )
+                        (states, actions, torch.repeat_interleave(torch.unsqueeze(goal, dim=1), states.shape[1], 1)),
+                        dim=-1)
                 else:
                     states = torch.cat(
-                        (
-                            states,
-                            torch.repeat_interleave(
-                                torch.unsqueeze(goal, dim=1), states.shape[1], 1
-                            ),
-                        ),
-                        dim=-1,
-                    )
+                        (states, torch.repeat_interleave(torch.unsqueeze(goal, dim=1), states.shape[1], 1)), dim=-1)
             else:
                 if with_acs:
                     if self.infer_only_by_acs:
@@ -377,53 +340,58 @@ class AttentionGaussianMultiTaskActor(BasicActor):
                 states = self.state_encoder(states)
             # traj = torch.cat((states, actions), dim=-1)
             traj = states
+        # traj = traj.repeat(batch_size, 1, 1, 1)  # [batch_size, task_size， seq_len, state_dim + action_dim]
         return traj, goal
 
-    def forward(self, state, traj, goal=None):
+    def forward(self, state, traj, goal=None, squeeze = True, return_atten_wei_lst = False):
         """
 
         state: [batch_size, task_size, state_dim]/[batch_size, state_dim]
         traj: [task_size, state_dim + action_dim, seq_len]
         """
-        if self.no_coordinate:
-            state = torch.clone(state)
-            state[..., -self.coor_dim :] = 0
-            traj = torch.clone(traj)
-            traj[:, -(self.action_dim + self.coor_dim) : -(self.action_dim), :] = 0
-            assert len(traj.shape) == 3
-            if goal is not None:
-                assert len(goal.shape) == 2
-                goal = torch.clone(goal)
-                goal[:, -self.coor_dim :] = 0
+        # if self.no_coordinate:
+        #     state = torch.clone(state)
+        #     state[..., -2:] = 0
+        #     traj = torch.clone(traj)
+        #     traj[:, -4:-2, :] = 0
+        #     assert len(traj.shape) == 3
+        #     if goal is not None:
+        #         assert len(goal.shape) == 2
+        #         goal = torch.clone(goal)
+        #         goal[:, -2:] = 0
 
         if len(state.shape) == 2:
-            state = torch.unsqueeze(state, 0)
+            state = torch.unsqueeze(state, 1)
+
+        # if self.last_state is not None:
+        #     print('state distance', torch.norm(self.last_state.detach() - state.detach()))
+        #     robot_norm = torch.square(torch.norm(state[-1][-1][0:3]))
+        #     gripper_norm = torch.square(torch.norm(state[-1][-1][3:5]))
+        #     vel_norm = torch.square(torch.norm(state[-1][-1][5:10]))
+        #     item_norm = torch.square(torch.norm(state[-1][-1][13:]))
+        #     all_norm = torch.square(torch.norm(state[-1][-1]))
+        #     print('robot: {} gripper: {} vel: {} item: {}'.format(robot_norm / all_norm, gripper_norm / all_norm, vel_norm / all_norm, item_norm / all_norm))
+        # self.last_state = state
+
         batch_size = state.shape[0]
         task_size = state.shape[1]
+        # assert task_size == 1
         seq_len = traj.shape[-1]
         # preprocess traj and state
         # repeat traj version
-        context, goal = self._mutli_task_preprocess_traj(
-            traj, goal, batch_size, encoding=True
-        )
-        traj_key, goal = self._mutli_task_preprocess_traj(
-            traj, goal, batch_size, encoding=False
-        )
-        traj_value, goal = self._mutli_task_preprocess_traj(
-            traj, goal, batch_size, encoding=False, with_acs=True
-        )
-        # traj_key: [task_size, seq_len, state_dim + action_dim]
+        # TODO: 采样/评估时，traj 的处理可以前置，因为对于一个episode内的多个时间步中，我们用的都是相同的demo，没必要每次重新推断。
+        context, goal = self._mutli_task_preprocess_traj(traj, goal, batch_size, encoding=True)
+        traj_key, goal = self._mutli_task_preprocess_traj(traj, goal, batch_size, encoding=False)
+        traj_value, goal = self._mutli_task_preprocess_traj(traj, goal, batch_size, encoding=False, with_acs=True)
         # traj = traj[0:1, :, :]
-        if self.with_goal:
-            input_ = torch.cat([state, goal.repeat(batch_size, 1, 1)], dim=-1)
-        else:
-            input_ = state
+        # if self.with_goal:
+        #     input_ = torch.cat([state, goal.repeat(batch_size, 1, 1)], dim=-1)
+        # else:
+        input_ = state
         # input_ = self.state_encoder(input_)
         # traj_reshape = traj.reshape([task_size] + list(traj.shape[2:]))
         # unsqueeze for constructing an one-step sequence.
-        input_reshape = torch.unsqueeze(
-            input_.reshape([batch_size * task_size] + list(input_.shape[2:])), dim=1
-        )
+        input_reshape = torch.unsqueeze(input_.reshape([batch_size * task_size] + list(input_.shape[2:])), dim=1)
 
         # TODO：如果不考虑离地图太远回不去的话，我们不需要做任务的表征。他只需要寻找近似状态并做自适应决策即可
         if self.with_task_emb:
@@ -432,13 +400,10 @@ class AttentionGaussianMultiTaskActor(BasicActor):
             # context_emb: [task_size, emb_dim]
             context_emb = torch.mean(context_emb, dim=-2)
             # context_emb: [task_size, emb_dim_after_avg_pool]
-            context_emb = torch.squeeze(
-                self.avg_p(torch.unsqueeze(context_emb, 1)), dim=-2
-            )
+            context_emb = torch.squeeze(self.avg_p(torch.unsqueeze(context_emb, 1)), dim=-2)
             # context_emb_q: [batch_size * task_size, 1, emb_dim_after_avg_pool]
             context_emb_q = context_emb.repeat(batch_size, 1, 1).reshape(
-                [batch_size * task_size, 1] + list(context_emb.shape[1:])
-            )
+                [batch_size * task_size, 1] + list(context_emb.shape[1:]))
             # context_emb_kv: [task_size, seq_len, emb_dim_after_avg_pool]
             context_emb_kv = context_emb.repeat(seq_len, 1, 1).transpose(0, 1)
             key_input = torch.cat([traj_key, context_emb_kv], dim=-1)
@@ -447,42 +412,42 @@ class AttentionGaussianMultiTaskActor(BasicActor):
         else:
             key_input = traj_key  # torch.cat([traj_key, context_emb_kv], dim=-1)
             value_input = traj_value  # torch.cat([traj_value, context_emb_kv], dim=-1)
-            query_input = (
-                input_reshape  # torch.cat([input_reshape, context_emb_q], dim=-1)
-            )
+            query_input = input_reshape  # torch.cat([input_reshape, context_emb_q], dim=-1)
         key_encoded = key_input
-        for enc in self.qk_encoder:
-            key_encoded = enc(key_encoded)
+        # TODO: 如果决策是非MDP的（比如图像输入），这里qkv的确定需要使用上下文信息，此时qkv_encoder都需要使用序列进行预处理
+        for enc in self.qk_encoder: key_encoded = enc(key_encoded)
         query_encoded = query_input
-        for enc in self.qk_encoder:
-            query_encoded = enc(query_encoded)
+        for enc in self.qk_encoder: query_encoded = enc(query_encoded)
         value_encoded = value_input
-        for enc in self.v_encoder:
-            value_encoded = enc(value_encoded)
+        for enc in self.v_encoder: value_encoded = enc(value_encoded)
         # kv_encoded: [batch_size * task_size, seq_len, emb_dim]
         # query_encoded: [batch_size * task_size, 1, emb_dim]
         key_encoded_repeated = key_encoded.repeat(batch_size, 1, 1, 1).reshape(
-            [batch_size * task_size] + list(key_encoded.shape[1:])
-        )
+            [batch_size * task_size] + list(key_encoded.shape[1:]))
         value_encoded_repeated = value_encoded.repeat(batch_size, 1, 1, 1).reshape(
-            [batch_size * task_size] + list(value_encoded.shape[1:])
-        )
+            [batch_size * task_size] + list(value_encoded.shape[1:]))
         # emb: [batch_size * task_size, emb_dim]
-        embed, atten_wei_lst = self.transformer.decoder(
-            key=key_encoded_repeated, value=value_encoded_repeated, query=query_encoded
-        )
+        embed, atten_wei_lst = self.transformer.decoder(key=key_encoded_repeated, value=value_encoded_repeated,
+                                         query=query_encoded)
         embed = embed.squeeze(dim=1)
+        # if self.last_embed is not None:
+        #     print('embed distance', torch.norm(self.last_embed.detach() - embed.detach()))
+        # self.last_embed = embed
         # get action
         action_mean = self.mu(embed)
-        action_log_std = (
-            self.log_std if self.state_std_independent else self.log_std(embed)
-        )
+        action_log_std = (self.log_std if self.state_std_independent else self.log_std(embed))
         action_log_std = torch.clamp(action_log_std, LOG_STD_MIN, LOG_STD_MAX)
-        action_mean = action_mean.reshape([batch_size, task_size, self.action_dim])
-        action_log_std = action_log_std.reshape(
-            [batch_size, task_size, self.action_dim]
-        )
-        return action_mean, action_log_std.exp()
+        if squeeze:
+            action_mean = action_mean.reshape([batch_size * task_size, self.action_dim])
+            action_log_std = action_log_std.reshape([batch_size * task_size, self.action_dim])
+        else:
+            action_mean = action_mean.reshape([batch_size, task_size, self.action_dim])
+            action_log_std = action_log_std.reshape([batch_size, task_size, self.action_dim])
+        if return_atten_wei_lst:
+            return action_mean, action_log_std.exp(), atten_wei_lst
+        else:
+            return action_mean, action_log_std.exp()
+
 
     @torch.no_grad()
     def forward_with_atten_score(self, state, traj, goal=None):

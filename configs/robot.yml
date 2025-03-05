@@ -1,0 +1,155 @@
+# for multi-task learning
+
+# env param
+#env_name_list: ["Collect-v0", "Planning-v0"]
+env_name: "MetaWorld"
+
+env_name_list: {
+                "meta":    "Meta-v2",
+                "metaBasketball": "MetaBasketball-v2",
+                "metaBinpicking": "MetaBinpicking-v2",
+                "metauniform": "UniformMeta-v0"}
+
+# algo param
+## alpha
+learn_alpha: True  # whether to train alpha
+alpha: 0.2
+alpha_lr: !!float 5e-5
+## actor
+# 大于 5e-5会让结果不稳定
+actor_hidden_size: [256, 256, 16]
+actor_lr: !!float 5e-5
+## critic
+critic_hidden_size: [256, 256, 256, 256, 16]
+critic_lr: !!float 5e-5
+## training
+gamma: 0.99
+rho: .005
+buffer_size: 1000_00
+start_timesteps: 0  # randomly select action to warmup buffer
+max_timesteps: 20_000_000
+eval_freq: 20
+recent_buf_len: 5
+eval_unseen_freq: 1000
+update_freq: 1
+task_repeated: 1 # 增加repeated 没啥好处
+updates_per_step: 1
+batch_size: 256
+random_start_rate: 1.0
+noise_scaler: 0.1
+is_sequence_data: False
+hist_len: 3
+multi_map: False
+iid_data_num: 1000
+max_drift_scale: 0.0
+# others
+seed: 0
+training_method: 'origin'
+increment_check_pred: 10_000
+
+# pretrain param
+mu: 0.0
+sigma: 0.1
+num_epoches: 1
+fake_samples: 2560
+pretrain_freq: 3
+num_round: 50000
+
+# multi-task
+task_nums: 10
+## actor
+actor_embed_dim: 128
+actor_dropout: 0.1
+actor_pos_encode: False
+actor_num_encoder_layers: 6
+actor_num_decoder_layers: 6
+actor_dim_feedforward: 256
+
+actor_kernel_size: 2
+actor_levels: 5
+actor_n_hidden: 8
+actor_num_heads: 64
+use_transformer: True
+use_only_decoder: False
+
+## critic
+critic_embed_dim: 64
+critic_dropout: 0.1
+critic_pos_encode: False
+critic_num_encoder_layers: 2
+critic_num_decoder_layers: 4
+critic_dim_feedforward: 128
+critic_goal_embed_dim: 16
+critic_embed_goal: True
+
+critic_kernel_size: 2
+critic_levels: 5
+critic_n_hidden: 8
+critic_num_heads: 16
+map_type: 'id'
+use_rnn_critic: False
+
+# reward scale
+scale: 10
+env_reward_weight: 1.0
+robot_weight:  10.0
+item_weight:   10.0
+action_weight: 0.05
+with_distance_reward: True
+distance_weight: 20
+max_space_dist: 2.0
+reward_fun_type: 'bound'
+hit_wall_reward: -2. # should be larger than the maximal one-step reward of ilr
+reach_goal_reward: 5. # should be smaller than the cumulative rewards of ilr
+
+# net
+weight_decay: !!float 1e-6
+with_local_view: False
+share_state_encoder: True  # traj share encoder with the state
+
+# imitation
+batch_with_demo: True  # concate the sampled batch with the demo batch
+add_bc_reward: True  # add ilr reward
+do_scale: True  # scale the rewards
+bc_train: False  # train bc and sac iteratively
+dynamical_demo: True  # dynamically
+
+# adversarial
+train_traj_ratio: 0.9
+
+#time used tracker
+time_tracker_log_freq: 20000
+
+# sync
+sync_margin: 50000
+
+
+no_itor: False
+
+no_coordinate: False
+
+task:  "pick-place-hole-v2"
+
+minus: 1.0
+
+task_random_sample_prob: 0.1
+
+shot_test: False
+
+large_dataset: True
+
+test: False
+
+test_without_draw: False
+
+demo_num: 60
+
+start_epi: 0
+
+use_rnn_actor: False
+
+mix_buffer: True
+
+use_map_id: False
+
+obstacle_prob: 0.3

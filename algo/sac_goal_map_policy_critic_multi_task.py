@@ -37,22 +37,21 @@ class MT_GoalMapPolicyMultiTaskSACAgent(BaseAgent):
             "embed_goal": self.critic_embed_goal,
             "output_dim": 1,
             "hidden_size": self.critic_hidden_size,
+            "seperate_encode": False,
+            "use_map_id": False,
+            # "pos_encode": self.pos_encode,
             "map_num": self.map_num,
-            "map_type": self.map_type,
-            "map_shape": self.map_shape,
         }
-        if self.use_rnn_critic:
-            critic_module = GoalMapMLPMultiTaskCritic
-            print("\n use rnn critic!!!!!!!!!!\n")
-        else:
-            kwargs["num_encoder_layers"] = self.critic_num_encoder_layers  # 4
-            kwargs["num_decoder_layers"] = self.critic_num_decoder_layers  # 4
-            kwargs["dim_feedforward"] = self.critic_dim_feedforward  # 256
-            kwargs["atten_emb_dim"] = self.critic_embed_dim  # 128
-            kwargs["num_heads"] = self.critic_num_heads  # 16
-            kwargs["dropout"] = self.critic_dropout  # 0.1
-            critic_module = AttenMultiTaskCritic
-            print("\n use DDT attention critic!!!!!!!!!!\n")
+
+        kwargs["num_encoder_layers"] = self.critic_num_encoder_layers  # 4
+        kwargs["num_decoder_layers"] = self.critic_num_decoder_layers  # 4
+        kwargs["dim_feedforward"] = self.critic_dim_feedforward  # 256
+        kwargs["atten_emb_dim"] = self.critic_embed_dim  # 128
+        kwargs["num_heads"] = self.critic_num_heads  # 16
+        kwargs["dropout"] = self.critic_dropout  # 0.1
+        critic_module = AttenMultiTaskCritic
+        print("\n use DDT attention critic!!!!!!!!!!\n")
+        
         self.critic_1 = critic_module(**kwargs).to(self.device)
         self.critic_1_target = critic_module(**kwargs).to(self.device)
         soft_update(1.0, self.critic_1, self.critic_1_target)
@@ -89,14 +88,6 @@ class MT_GoalMapPolicyMultiTaskSACAgent(BaseAgent):
         else:
             self.actor = AttentionGaussianMultiTaskActor(**kwargs).to(self.device)
             print("\nuse DDT!!!\n")
-
-        if self.use_rnn_actor:
-            self.actor = TransformerRNNMultiTaskActor(**kwargs).to(self.device)
-            print("\nuse RNN!!!\n")
-
-        if self.use_only_decoder:
-            self.actor = AttentionDecoderMultiTaskActor(**kwargs).to(self.device)
-            print("\nuse only Decoder!!!\n")
 
         self.actor_optim = optim.RMSprop(self.actor.parameters(), lr=self.actor_lr)
         self.BC_optim = optim.Adam(

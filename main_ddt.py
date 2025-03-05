@@ -1,10 +1,13 @@
 import os
+os.environ['MKL_SERVICE_FORCE_INTEL'] = '1'
+os.environ['MUJOCO_GL'] = 'osmesa'
 import os.path as osp
 import numpy as np
 import gym
 import time
 from collections import deque
 import copy
+import envs
 
 import gym
 from RLA import exp_manager, time_tracker, logger
@@ -12,8 +15,9 @@ from RLA import exp_manager, time_tracker, logger
 from utils import set_seed
 from config_loader import get_alg_args, write_config
 from buffer import save_buffer, load_buffer
-from trainer import VPAMTrainer
-from algo.sac_goal_map_policy_critic_multi_task import MT_GoalMapPolicyMultiTaskSACAgent
+from obstacle_policy import Initial_Obstacle_Policy
+from trainer import VPAMTrainer, ROBOTTrainer
+from algo.sac_goal_mujoco_policy_critic import MT_GoalPolicySACAgent
 from multi_task_env_handler import get_env_handle, BasicMultiTaskEnvHandler
 from CONST import *
 
@@ -36,7 +40,12 @@ def append_env_config(configs, env_name, env):
         eps = 0.2  # for maze env, we may want actor output boundary action value
         configs["action_high"] = float(env.action_space.high[0] + eps)
         configs["action_low"] = float(env.action_space.low[0] - eps)
-    else:
+    elif env_name in ['UniformMeta-v']:
+        configs["state_dim"] = env.state_dim
+        configs["action_dim"] = env.action_dim
+        eps = 0.2  # for maze env, we may want actor output boundary action value
+        configs["action_high"] = float(env.action_space.high[0] + eps)
+        configs["action_low"] = float(env.action_space.low[0] - eps)
         raise NotImplementedError
 
 
@@ -50,9 +59,10 @@ def noisy_observation(env, state, configs):
 
 def train(configs, env, env_handler: BasicMultiTaskEnvHandler):
     # init modules
-    trainer = VPAMTrainer(CURRENT_FILE_DIRNAME, configs, env_handler)
+    # trainer = VPAMTrainer(CURRENT_FILE_DIRNAME, configs, env_handler)
+    trainer = ROBOTTrainer(CURRENT_FILE_DIRNAME, configs, env_handler)
     trainer.collect_demonstrations(configs)
-    policy = MT_GoalMapPolicyMultiTaskSACAgent(configs)
+    policy = MT_GoalPolicySACAgent(configs)
     data_collect_env = env_handler.env_creator(
         configs,
         collect_demo_data=True,
@@ -66,15 +76,14 @@ def train(configs, env, env_handler: BasicMultiTaskEnvHandler):
 
     # save configs
     dump_configs = copy.copy(configs)
-    del dump_configs["map_fig_dict"]
     write_config(dump_configs, os.path.join(exp_manager.results_dir, "configs.yml"))
 
     # TODO: 以下变量临时赋值，二次重构时要放到trainner内部
     iid_train_task_ids = trainer.iid_train_task_ids
     all_trajs = trainer.all_trajs
-    task_id_to_task_config_list = trainer.task_id_to_task_config_list
     policy = trainer.policy
     img_dir = trainer.img_dir
+    all_env_label_id = {'pick-place-v2': 0, 'pick-place-wall-v2': 1, 'pick-place-hole-v2':2, 'single': 3, configs['task']: 4}
 
     # start training and evaluation
     iid_train_task_ids = iid_train_task_ids
@@ -106,7 +115,7 @@ def train(configs, env, env_handler: BasicMultiTaskEnvHandler):
                         copy.deepcopy(policy.trans_buffer),
                         copy.deepcopy(policy.traj_buffer),
                         task_id,
-                        task_config,
+                        all_env_label_id[task_label],
                     ]
                 )
             traj_path = os.path.join(demo_dir, str(task_id) + "_traj")
@@ -117,15 +126,27 @@ def train(configs, env, env_handler: BasicMultiTaskEnvHandler):
             else:
                 policy.trans_buffer.clear()
             _, traj = policy.traj_buffer.random_sample(0)  # train traj
+            
+            if isinstance(traj, list):
+                traj, traj_mujoco, goal, task_label = traj
         demo_traj = traj
-        task_config = task_id_to_task_config_list[task_id]
+        # task_config = task_id_to_task_config_list[task_id]
 
         logger.info(
-            f"Training on training task {task_id} (scene config {task_config['map_id']})"
+            f"Training on training task {task_id}"
         )
         state, goal, done = env_handler.config_env_through_demo(
-            demo_traj, env, task_config
+            env, traj_mujoco, goal, task_label
         )
+
+
+        # ---------------------obstacle logic---------------------
+        whether_obstacle = np.random.rand()<configs['obstacle_prob'] # whether add obstacle
+        obstacle_policy = Initial_Obstacle_Policy(configs['task'])
+        obstacle_try, obstacle_success = 0, False  
+        # obstacle_try: try to add obstacle for how many times, in pick place refer to how many times we set action[3]=-1
+        # success_obstacle: whether we successfully add obstacle, in pick place refer to whether we successfully [drop] the block
+        # ---------------------obstacle logic end----------------------------
 
         actions = []
 
@@ -145,6 +166,8 @@ def train(configs, env, env_handler: BasicMultiTaskEnvHandler):
             else:
                 action = policy.select_action(obs, traj, training=True)
 
+            if whether_obstacle:
+                action, obstacle_try, obstacle_success, obstacle_info = obstacle_policy(obs, action, obstacle_try, obstacle_success)
             actions.append(action)
 
             # Perform action
@@ -152,21 +175,21 @@ def train(configs, env, env_handler: BasicMultiTaskEnvHandler):
             reward = env_handler.get_osil_reward(demo_traj, state, action, done, reward)
 
             logger.ma_record_tabular("mean_reward", reward, record_len=100, freq=1000)
-            next_obs = noisy_observation(env, next_state, configs)
+            next_obs = next_state
 
             # Store data in replay buffer
             with time_tracker("policy learning"):
                 policy.trans_buffer.insert(obs, action, next_obs, reward, done, 0)
                 if t % configs["update_freq"] == 0:
                     info = policy.update(
-                        obs,
-                        action,
-                        next_obs,
-                        reward,
-                        done,
-                        0,
-                        task_config,
-                        recent_buffer_list,
+                        obs, 
+                        action, 
+                        next_obs, 
+                        reward, 
+                        done, 
+                        0, 
+                        all_env_label_id[task_label], 
+                        recent_buffer_list
                     )
                     if info is not None:
                         for key, value in info.items():
@@ -189,20 +212,20 @@ def train(configs, env, env_handler: BasicMultiTaskEnvHandler):
                 obs = noisy_observation(env, state, configs)
                 runned_episodes[task_id] += 1
                 policy.trans_buffer.stored_eps_num = runned_episodes[task_id]
-                succeed = env_handler.reach_goal(goal, state)
+                succeed = env.task_success
                 saved_maze_num[task_id] = (saved_maze_num[task_id] + 1) % 5
-                trainer.update_stats_after_episode(task_id, succeed)
+                trainer.update_stats_after_episode(task_id, succeed, obstacle_success)
 
-                if runned_episodes[task_id] % 50 < 5:
-                    trainer.visualize_trajs(
-                        env,
-                        traj,
-                        img_dir,
-                        task_id,
-                        runned_episodes[task_id],
-                        task_config,
-                        succeed,
-                    )
+                # if runned_episodes[task_id] % 50 < 5:
+                #     trainer.visualize_trajs(
+                #         env,
+                #         traj,
+                #         img_dir,
+                #         task_id,
+                #         runned_episodes[task_id],
+                #         # task_config,
+                #         succeed,
+                #     )
 
                 logger.info(
                     f"Total T: {t+1} Episode Num: {episode_num+1} Episode T: {episode_timesteps} Task: {task_id} Reward: {episode_reward:.3f}"
@@ -210,8 +233,7 @@ def train(configs, env, env_handler: BasicMultiTaskEnvHandler):
                 if runned_episodes[task_id] % 10 == 0:
                     logger.record_tabular(
                         "mt_train_train_return/"
-                        + "scene_"
-                        + str(task_id_to_task_config_list[task_id]["map_id"]),
+                        + "scene_",
                         episode_reward,
                         exclude=["csv"],
                     )  # too many data thus excluding
@@ -221,7 +243,7 @@ def train(configs, env, env_handler: BasicMultiTaskEnvHandler):
                 episode_timesteps = 0
                 episode_num += 1
 
-                trainer.evaluation(task_id, runned_episodes, task_config)
+                trainer.evaluation(task_id, runned_episodes)
                 # save data
                 with time_tracker("save buffer io"):
                     save_buffer(policy.trans_buffer, trans_path)
@@ -236,7 +258,7 @@ def train(configs, env, env_handler: BasicMultiTaskEnvHandler):
 
 if __name__ == "__main__":
     # get configs
-    config_file = osp.join(CURRENT_FILE_DIRNAME, "configs/maze_mt.yml")
+    config_file = osp.join(CURRENT_FILE_DIRNAME, "configs/robot.yml")
     configs = get_alg_args(config_file)
     set_seed(configs["seed"])  # set seed for reproduction
     env_handler = get_env_handle(configs["env_name"], configs=configs)
@@ -263,10 +285,8 @@ if __name__ == "__main__":
     exp_manager.add_record_param(
         [
             "description",
-            "multi_map",
             "obstacle_prob",
-            "no_coordinate",
-            "batch_size",
+            "task",
         ]
     )
     exp_manager.log_files_gen()

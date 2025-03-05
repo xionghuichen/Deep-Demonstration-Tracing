@@ -36,6 +36,13 @@ def _parse_args():
     parser.add_argument("--multi_map", default=False, action="store_true")
     parser.add_argument("--obstacle_prob", default=0.1, type=float)
     parser.add_argument("--no_coordinate", default=False, action="store_true")
+    
+    parser.add_argument("--demo_num", default=60, type=int)
+    
+    parser.add_argument("--eval_freq", default=20, type=int)
+    parser.add_argument("--eval_unseen_freq", default=1000, type=int)
+    
+    parser.add_argument("--task", default="maze", type=str)
 
     args = parser.parse_args()
     return args

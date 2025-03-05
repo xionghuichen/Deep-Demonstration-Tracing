@@ -24,7 +24,7 @@ if __name__=='__main__':
     args = argsparser()
     filter = Filter()
     filter.config(type=args.delete_type, timstep_bound=args.timestep_bound)
-    dlt = DeleteLogTool(proj_root=DATA_ROOT, task_table_name=args.task_table_name, regex=args.regex,
+    dlt = DeleteLogTool(proj_root="/home/yejunyin/opensource_imitator/Deep-Demonstration-Tracing/RLA_LOG", task_table_name=args.task_table_name, regex=args.regex,
                         filter=filter)
     if args.delete_type == Filter.ALL:
         dlt.delete_related_log()

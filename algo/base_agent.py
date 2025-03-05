@@ -112,9 +112,7 @@ class BaseAgent(nn.Module):
         self.use_only_decoder = configs["use_only_decoder"]
         self.use_rnn_actor = configs["use_rnn_actor"]
         self.configs = configs
-        self.map_fig_dict = configs["map_fig_dict"]
         self.map_type = configs["map_type"]
-        self.map_shape = configs["map_shape"]
         self.replace_sample = True
 
     def init_component(self, env_handler, demo_collect_env):
