@@ -211,6 +211,8 @@ class AttentionGaussianMultiTaskActor(BasicActor):
         state_std_independent=False,
         share_state_encoder=False,
         no_coordinate=False,
+        seperate_encode=False,
+        **kwargs
     ):
         super().__init__(state_dim, action_dim)
         self.state_std_independent = state_std_independent
@@ -379,7 +381,7 @@ class AttentionGaussianMultiTaskActor(BasicActor):
             traj = states
         return traj, goal
 
-    def forward(self, state, traj, goal=None):
+    def forward(self, state, traj, goal=None, squeeze=False, return_atten_wei_lst=False):
         """
 
         state: [batch_size, task_size, state_dim]/[batch_size, state_dim]
@@ -478,11 +480,18 @@ class AttentionGaussianMultiTaskActor(BasicActor):
             self.log_std if self.state_std_independent else self.log_std(embed)
         )
         action_log_std = torch.clamp(action_log_std, LOG_STD_MIN, LOG_STD_MAX)
-        action_mean = action_mean.reshape([batch_size, task_size, self.action_dim])
-        action_log_std = action_log_std.reshape(
-            [batch_size, task_size, self.action_dim]
-        )
-        return action_mean, action_log_std.exp()
+        if squeeze:
+            action_mean = action_mean.reshape([batch_size * task_size, self.action_dim])
+            action_log_std = action_log_std.reshape([batch_size * task_size, self.action_dim])
+        else:
+            action_mean = action_mean.reshape([batch_size, task_size, self.action_dim])
+            action_log_std = action_log_std.reshape(
+                [batch_size, task_size, self.action_dim]
+            )
+        if return_atten_wei_lst:
+            return action_mean, action_log_std.exp(), atten_wei_lst
+        else:
+            return action_mean, action_log_std.exp()
 
     @torch.no_grad()
     def forward_with_atten_score(self, state, traj, goal=None):

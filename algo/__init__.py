@@ -1,0 +1,2 @@
+from .sac_goal_map_policy_critic_multi_task import MT_GoalMapPolicyMultiTaskSACAgent
+from .sac_goal_mujoco_policy_critic import MT_GoalPolicySACAgent

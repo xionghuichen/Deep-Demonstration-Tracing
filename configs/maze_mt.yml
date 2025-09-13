@@ -80,6 +80,8 @@ critic_levels: 5
 critic_n_hidden: 8
 critic_num_heads: 16
 map_type: 'fig'
+map_fig_dict: {0: 0}
+map_shape: 0
 
 # reward scale
 scale: 10
@@ -131,3 +133,31 @@ sync_logs: False
 no_itor: False
 
 no_coordinate: False
+
+
+# Metaworld Only
+task: "pick-place-hole-v2"
+
+minus: 1.0
+
+task_random_sample_prob: 0.1
+
+shot_test: False
+
+large_dataset: True
+
+test: False
+
+test_without_draw: False
+
+demo_num: 60
+
+start_epi: 0
+
+use_rnn_actor: False
+
+mix_buffer: True
+
+use_map_id: False
+
+obstacle_prob: 0.3

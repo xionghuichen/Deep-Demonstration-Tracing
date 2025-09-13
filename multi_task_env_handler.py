@@ -35,7 +35,7 @@ class BasicMultiTaskEnvHandler:
             demo_traj, state, action, done, task_reward, *args, **kwargs
         )
 
-    def reach_goal(self, goal, state):
+    def reach_goal(self, goal, state, env):
         """
         Check if the agent has reached the goal.
         """
@@ -100,7 +100,7 @@ class VPAMMultiTaskEnvHandler(BasicMultiTaskEnvHandler):
         env.action_space.seed(self.configs["seed"])
         return env
 
-    def reach_goal(self, goal, state):
+    def reach_goal(self, goal, state, env):
         if np.linalg.norm(state[-2:] - goal) <= 0.5:
             succeed = True
         else:
@@ -136,7 +136,8 @@ class VPAMMultiTaskEnvHandler(BasicMultiTaskEnvHandler):
         goal = last_step + last_action
         return start, goal
 
-    def config_env_through_demo(self, demo_traj, env, task_config):
+    def config_env_through_demo(self, demo_traj, env, demo_config):
+        task_config = demo_config["task_config"]
         start, goal = self.get_start_and_goal_from_demo(
             demo_traj,
             random_start=(np.random.rand() < self.configs["random_start_rate"]),
@@ -150,6 +151,81 @@ class VPAMMultiTaskEnvHandler(BasicMultiTaskEnvHandler):
                 start=start,
                 goal=goal,
                 with_local_view=True,
+            ),
+            False,
+        )
+        return state, goal, done
+    
+class ROBOTMultiTaskEnvHandler(BasicMultiTaskEnvHandler):
+    def __init__(self, configs) -> None:
+        super().__init__(configs)
+        self.state_dim = self.dummy_env.state_dim
+        self.action_dim = self.dummy_env.action_dim
+
+        self.reward_func = ROBOTOSILRewardFunc(
+            self.state_dim, self.action_dim, 0, self.configs
+        )
+
+    def env_creator(self, *args, **kwargs):
+        """
+        To compatible with the original code, we keep this function.
+        """
+        return self.create_env(*args, **kwargs)
+
+    def create_env(self, *args, **kwargs):
+        """
+        We rescale the reward values for more stable RL training, but it is implmented in the environment class.
+        This is a unnecessary and redundant implementation. We keep it here for compatibility with the original code.
+        """
+        env_name = "UniformMeta-v0"
+        self.configs["env_name"] = env_name
+
+        # all_uniform_task_list = ['pick-place-v2', 'pick-place-wall-v2', 'pick-place-hole-v2']
+        # all_env_label_id = {'pick-place-v2': 0, 'pick-place-wall-v2': 1, 'pick-place-hole-v2':2, 'single': 3, self.configs['task']: 4}
+
+        env = gym.make(env_name
+                       )
+        env.action_space.seed(self.configs["seed"])
+        
+        if self.configs['task'] == 'metauniform':
+            env.reset(task = 'pick-place-v2')  # type: ignore
+        else:
+            env.reset(task = self.configs['task'])
+
+        self.configs["act_dim"] = env.action_dim
+        self.configs["obs_dim"] = env.state_dim
+        
+        self.configs["state_dim"] = env.state_dim
+        self.configs["action_dim"] = env.action_dim
+        eps = 0.2  # for maze env, we may want actor output boundary action value
+        self.configs["action_high"] = float(env.action_space.high[0] + eps)
+        self.configs["action_low"] = float(env.action_space.low[0] - eps)
+        return env
+
+    def create_prototype(self):
+        env = gym.make("UniformMeta-v0")
+        env.action_space.seed(self.configs["seed"])
+        return env
+    
+    def reach_goal(self, goal, state, env):
+        return env.task_success
+
+    def get_start_and_goal_from_demo(
+        self,
+        traj,
+        random_start=False,
+        noise_scaler=0.1,
+    ):
+        raise NotImplementedError
+
+    def config_env_through_demo(self, demo_traj, env, demo_config):
+        traj_mujoco, goal, task_label = demo_config["traj_mujoco"], demo_config["goal"], demo_config["task_label"]
+        env_state = traj_mujoco[0]
+        state, done = (
+            env.reset(
+                init_state = env_state,
+                goal = goal,
+                task=task_label,
             ),
             False,
         )
@@ -232,10 +308,87 @@ class VPAMOSILRewardFunc(BasicOSILRewardFunc):
             min_dist = state_error + action_error
         return min_dist_idx, min_dist
 
+class ROBOTOSILRewardFunc(BasicOSILRewardFunc):
+    def __init__(self, state_dim, action_dim, coor_dim, configs):
+        super().__init__(configs)
+        self.stand_dist_reward = False
+        self.action_weight = self.configs["action_weight"]
+        self.state_dim = 18
+        self.action_dim = action_dim # 4
+        self.coor_dim=0
+        self.minus=configs["minus"]
+
+    def __call__(self, demo_traj, state, action, done, task_reward, return_info=False):
+        raw_idx, min_dist, action_error = self.find_min_dist(demo_traj, state, action)
+        manual_reward_fun_kwargs = {
+            "min_dist": min_dist,
+            "raw_idx": raw_idx,
+            "traj_len": len(demo_traj),
+            "action_error": action_error,
+            "max_space_dist": self.configs["max_space_dist"], # dict in mw
+            "minus": self.minus,
+            "done": done,
+            "distance_weight": self.configs["distance_weight"]
+        }
+        rew = get_robot_origin_ilr_reward(**manual_reward_fun_kwargs)
+        osil_reward = rew + task_reward
+        osil_reward /= self.configs["scale"]
+        if return_info:
+            return osil_reward, manual_reward_fun_kwargs
+        else:
+            return osil_reward
+
+    def find_min_dist(self, target_traj, state, action):
+        state_dim=18
+        robotPostion = state[0:18]
+        if self.stand_dist_reward:
+            query_value = np.hstack((state, self.action_weight * action))
+            dist_array = np.sqrt(np.mean(np.square(target_traj[...,0:state_dim] - query_value), axis=-1))
+        else:
+            query_value = state[self.coor_dim : self.state_dim]
+            # compute euclidean distance
+            dist_array = np.sqrt(
+                np.sum(
+                    np.square(
+                        target_traj[:, 0:state_dim] - query_value
+                    ),
+                    axis=-1,
+                )
+            )
+        min_dist_idx = np.argmin(dist_array)
+        target_s_a = target_traj[min_dist_idx]
+        if target_s_a.shape[-1]>state_dim+self.action_dim:
+            target_s_a = np.concatenate([target_s_a[0:state_dim], target_s_a[-self.action_dim:]], axis=-1)
+        state_error = np.sqrt(
+            np.square(
+                target_s_a[self.coor_dim : self.state_dim]
+                - state[self.coor_dim : self.state_dim]
+            ).sum()
+        )
+        if self.stand_dist_reward:
+            action_error = np.sqrt(
+                np.square(target_s_a[self.state_dim :] - action).sum()
+            )
+        else:
+            action_error = (
+                1
+                / np.exp(state_error)
+                * np.sqrt(np.square(target_s_a[self.state_dim :] - action).sum())
+            )
+        if self.stand_dist_reward:
+            min_dist = np.sqrt(np.square(target_s_a - query_value).sum())
+        else:
+            min_dist = state_error + action_error
+        return min_dist_idx, min_dist, action_error
+
+
 
 def get_env_handle(env_name, configs) -> BasicMultiTaskEnvHandler:
     if env_name == "ValetParkingAssistMaze-v0":
         return VPAMMultiTaskEnvHandler(configs)
+    elif env_name == "metaworld":
+        from envs import register_mw
+        return ROBOTMultiTaskEnvHandler(configs)
     else:
         raise NotImplementedError
 
@@ -259,6 +412,23 @@ def get_bound_ilr_reward(
 def get_origin_ilr_reward(min_dist, raw_id, traj_len, distance_weight, done):
     ilr_reward = 1.0 - min_dist
     distance_reward = 1.0 - (traj_len - 1 - raw_id) / traj_len
+    if done:
+        return ilr_reward + distance_weight * distance_reward
+    return ilr_reward
+
+def get_robot_origin_ilr_reward(min_dist, raw_idx, traj_len, action_error, max_space_dist, minus, done, distance_weight):
+    min_idx = (traj_len - (raw_idx+1))/traj_len # float
+    
+    rwd_dist = (1.0 - min(min_dist, max_space_dist)/max_space_dist)
+    rwd_action = 1 - action_error
+    ilr_reward = rwd_dist + rwd_action
+    
+    if minus > 0:
+        ilr_reward -= minus # 1.0
+
+    distance_reward = 1.0 - min_idx
+    if min_dist > max_space_dist:
+        distance_reward = 0.0
     if done:
         return ilr_reward + distance_weight * distance_reward
     return ilr_reward

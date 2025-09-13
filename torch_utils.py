@@ -32,6 +32,26 @@ def build_mlp_extractor(input_dim, hidden_size, activation_fn):
 #         self.input_size, self.hidden_size=input_size, self.feature_dim
 #         self.rnn_layer=nn.ModuleList([nn.GRUCell(input_size=input_size, hidden_size=self.hidden_size) for _ in range(hidden_size)])
 
+class CatNet(nn.Module):
+    def __init__(
+            self,
+            embed_dim,
+    ):
+        super().__init__()
+        self.position_encoder = nn.Linear(3, int(embed_dim / 4))
+        self.gripper_encoder = nn.Linear(2, int(embed_dim / 4))
+        # self.vel_encoder = nn.Linear(5, int(embed_dim / 4))
+        self.item_encoder = nn.Linear(24, int(embed_dim / 2))
+
+    def forward(self, state):
+        batch_size = state.shape[0]
+        seq_len = state.shape[1]
+        state = torch.reshape(state, (batch_size, seq_len, -1))
+        position_embedding = self.position_encoder(state[:,:, 0:3])
+        gripper_embedding = self.gripper_encoder(state[:,:, 3:5])
+        item_embedding = self.item_encoder(state[:,:, 13:37])
+        embedding = torch.cat([position_embedding,gripper_embedding,item_embedding], dim=-1)
+        return embedding
 
 class meta_rot_contexter(nn.Module):
     def __init__(self, state_dim, embed_dim) -> None:

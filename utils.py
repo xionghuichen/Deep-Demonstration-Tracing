@@ -8,7 +8,9 @@ from numpy.random import choice
 import tabulate
 import numpy as np
 import random
+import cv2
 from collections import deque
+import copy
 
 
 def set_seed(seed):
@@ -84,3 +86,32 @@ def parameter_count_filter(model: nn.Module, valid: lambda x: True):
     if total_num > 1e2:
         return "{:.1f}K".format(total_num / 1e3)
     return str(total_num)
+
+
+def soft_update(rho, net, target_net):
+    for param, target_param in zip(net.parameters(), target_net.parameters()):
+        target_param.data.copy_(rho * param.data + (1 - rho) * target_param.data)
+
+def preprocess_traj(traj, device):
+    """
+    traj: [seq_len, state_dim+action_dim]
+
+    convert from ndarray into tensor
+
+    return: [1, state_dim+action_dim, seq_len]
+    """
+    traj = torch.FloatTensor(traj).to(device)
+    if len(traj.shape) == 2:
+        traj = traj.unsqueeze(dim=0)
+    traj = traj.transpose(1, 2)
+    return traj
+
+def image_to_video(images, vedioPath):
+        fileSize = images[0].shape[0:2]
+        writer = cv2.VideoWriter(vedioPath + '.mp4',
+                                 cv2.VideoWriter_fourcc('m', 'p', '4', 'v'), 12, (fileSize[1], fileSize[0]), True)
+        total_frame = len(images)
+        for i in range(total_frame):
+            writer.write(images[i])
+        writer.release()
+

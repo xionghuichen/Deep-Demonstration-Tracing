@@ -37,6 +37,8 @@ def _parse_args():
     parser.add_argument("--obstacle_prob", default=0.1, type=float)
     parser.add_argument("--no_coordinate", default=False, action="store_true")
 
+    parser.add_argument("--benchmark", default="maze", type=str, choices=["maze", "metaworld"])
+
     args = parser.parse_args()
     return args
 
@@ -51,6 +53,8 @@ def get_env_config(env, configs):
 
 def get_alg_args(config_file):
     args = _parse_args()
+    if args.benchmark =="metaworld":
+        config_file = config_file.replace("maze_mt", "metaworld_mt")
     configs = _read_config(config_file)
     configs.update(vars(args))
     if configs["multi_map"]:

@@ -6,6 +6,9 @@ import torch
 from scipy.spatial import KDTree
 import gym
 import pickle
+import cv2
+import os
+import copy
 
 # import gym_continuous_maze
 import random
@@ -14,6 +17,8 @@ from collections import deque
 from utils import update_hist
 from pickle import load, dump
 from CONST import *
+
+from utils import image_to_video
 
 
 class TransitionBuffer:
@@ -196,11 +201,13 @@ class TrajectoryBuffer:
         local_view_error_weight=0.5,
         no_itor=False,
     ):
-        demo_collect_env.reset()
+        if "aze" in env_name:
+            demo_collect_env.reset()
+            self.coor_dim = env_handler.coor_dim
         self.demo_collect_env = demo_collect_env
+
         self.task_nums = task_nums
         self.env_name = env_name
-        self.coor_dim = env_handler.coor_dim
         self.state_dim = env_handler.state_dim
         self.action_dim = env_handler.action_dim
         self.env_handler = env_handler
@@ -218,6 +225,7 @@ class TrajectoryBuffer:
         self.is_full_traj = is_full_traj
         self.add_local_view_error = add_local_view_error
         self.local_view_error_weight = local_view_error_weight
+        self.terminal_states = dict()
         self.no_itor = no_itor
         if self.no_itor:
             print("\n-------origin ilr reward-------\n")
@@ -270,6 +278,35 @@ class TrajectoryBuffer:
         self._demo_buffer[task_id].append(
             self._get_trans(new_traj.copy(), task_id, walls)
         )
+
+    def _impose_weight(self, traj):
+        """
+        :param traj: [trans_num, state_dim + action_dim]
+        :return: traj with (s, self.action_weight * a)
+        """
+        return traj[:, 0:18]
+
+    def insert_mujoco(self, task_id, new_traj, mujoco_traj, goal, task_label, videopath=None):
+        """
+        Example of new_traj:
+        [
+            [s_1, a_1],
+            [s_2, a_2],
+            ...
+            [s_{T-1}, a_{T-1}]
+        ]
+        """
+        # traj_length = self.find_traj_terminal(new_traj.copy(), mujoco_traj, goal, task_label)
+        traj_length = len(new_traj)
+        new_traj = new_traj[0:traj_length]
+        self.trajectory_buffer[task_id].append([new_traj.copy(), mujoco_traj.copy(), goal, task_label])
+        self.kdtrees[task_id].append(
+            KDTree(self._impose_weight(new_traj.copy()))
+        )
+        self.traj_lens[task_id].append(new_traj.shape[0])
+        self._demo_buffer[task_id].append(
+            self._get_trans_mujoco(new_traj.copy(), task_id, mujoco_traj, goal, task_label, videopath))
+        return new_traj
 
     def random_sample(self, task_id):
         if len(self.trajectory_buffer[task_id]) == 0:
@@ -342,6 +379,90 @@ class TrajectoryBuffer:
             torch.FloatTensor(np.array(rewards)).to(self.device),
             torch.FloatTensor(np.array(masks)).to(self.device),
         )
+        return res
+
+    def _get_trans_mujoco(self, traj, task_id, mujoco_traj, goal, task_label, videopath):
+        env = self.env_handler.create_prototype()
+
+        init_state = mujoco_traj[0]
+        env.reset(init_state=init_state,
+                  goal=goal,
+                  task = task_label)
+        
+        states, actions, next_states, rewards, masks = [], [], [], [], []
+        cur_hists, next_hists, cur_last_inds, next_last_inds = [], [], [], []
+
+        cur_hist = deque(maxlen=self.hist_len)
+        next_hist = deque(maxlen=self.hist_len)
+        pre_action = None
+        videoimages = []
+
+        for idx in range(len(traj)):
+            s_a = traj[idx]
+            state, action = s_a[:-self.action_dim], s_a[-self.action_dim:]
+            # todo zh what does this function mean?
+
+            env_state = mujoco_traj[idx]
+            env.set_pos(env_state)
+            next_state, reward, done, _ = env.step(action)
+            if videopath is not None:
+                image = env.render_ilr_reward(mode="rgb_array")
+                image = np.ascontiguousarray(image)
+                cv2.putText(image, 'demonstration {}'.format(idx), (50, 50), cv2.FONT_HERSHEY_COMPLEX, 1.0,
+                            (100, 200, 200), 3)
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                videoimages.append(image)
+
+            finish = done
+            
+            reward = self.env_handler.get_osil_reward(
+                traj,
+                state,
+                action,
+                done,
+                reward,
+            )
+
+            # if self.do_scale:
+            #     reward /= self.scale
+
+            if (pre_action is None):
+                pre_action = np.zeros(*action.shape)
+            cur_hist_np, cur_last_id = update_hist(cur_hist, state, pre_action, self.hist_len, dim=0)
+
+            if len(next_hist) == 0:
+                next_hist.append(np.concatenate((state, pre_action), axis=-1))
+
+            next_hist_np, next_last_id = update_hist(next_hist, next_state, action, self.hist_len, dim=0)
+
+            pre_action = action
+
+            states.append(state)
+            actions.append(action)
+            next_states.append(next_state)
+
+            rewards.append([reward])
+            masks.append([1.0 - done])
+            # next_states.append(next_state)
+            # rewards.append([reward])
+            # masks.append([1.0 - done])
+            cur_hists.append(cur_hist_np)
+            cur_last_inds.append(cur_last_id)
+            next_hists.append(next_hist_np)
+            next_last_inds.append(next_last_id)
+            if done:
+                self.terminal_states[task_id] = next_state
+                if videopath is not None:
+                    image_to_video(videoimages, os.path.join(videopath, 'demonstration.mp4'))
+                break
+        print('reward get by demonstration:', np.sum(np.array(rewards)))
+
+        res = (
+            torch.FloatTensor(np.array(states)).to(self.device),
+            torch.FloatTensor(np.array(actions)).to(self.device),
+            torch.FloatTensor(np.array(next_states)).to(self.device),
+            torch.FloatTensor(np.array(rewards)).to(self.device),
+            torch.FloatTensor(np.array(masks)).to(self.device))
         return res
 
     def load_buffer(self, buffer_info):
